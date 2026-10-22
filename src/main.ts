@@ -1,5 +1,6 @@
 import { log } from "./log";
+import { mountShell } from "./ui/shell";
 
-log("music-practice placeholder");
+log("music-practice start");
 const app = document.getElementById("app");
-if (app) app.textContent = "Music Practice";
+if (app) mountShell(app);

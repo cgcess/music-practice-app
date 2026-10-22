@@ -12,3 +12,7 @@
 ## 2026-10-22 t001-conventions: conventions baseline
 Store/schema/backup in src/data is the only IndexedDB path; fixtures + migrations frozen behind
 .claude/unlock-data. Known limit: the bash freeze hook (R3) can be bypassed by quoted paths; Write/Edit deny is the real guard.
+
+## 2026-10-22 t002-ui-shell: hash routing + h() for UI
+UI lives in `src/ui/`; views are built with `h()` (text via text nodes, never `innerHTML`) and routed by `#/path` with `:param` segments.
+`src/ui/` never imports `src/data/` directly. DOM tests use happy-dom via a per-file pragma; focus moves to `<main>` on navigation, not on initial load.
