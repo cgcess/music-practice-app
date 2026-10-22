@@ -11,6 +11,7 @@ export function mountShell(root: HTMLElement): () => void {
   root.replaceChildren(
     h("header", null, h("h1", null, "Music Practice"), h("nav", { "aria-label": "Main" }, links)),
     main,
+    h("footer", null, `Version ${__APP_VERSION__}`),
   );
 
   // Empty hash resolves to the default route.

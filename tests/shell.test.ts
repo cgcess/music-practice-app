@@ -35,6 +35,10 @@ describe("shell", () => {
     const main = mount();
     expect(document.activeElement).not.toBe(main);
   });
+  it("shows the app version in the footer", () => {
+    mount();
+    expect(document.querySelector("footer")?.textContent).toContain(`Version ${__APP_VERSION__}`);
+  });
   it("renders one nav link per route", () => {
     mount();
     expect(document.querySelectorAll("nav a")).toHaveLength(routes.length);

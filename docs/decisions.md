@@ -16,3 +16,6 @@ Store/schema/backup in src/data is the only IndexedDB path; fixtures + migration
 ## 2026-10-22 t002-ui-shell: hash routing + h() for UI
 UI lives in `src/ui/`; views are built with `h()` (text via text nodes, never `innerHTML`) and routed by `#/path` with `:param` segments.
 `src/ui/` never imports `src/data/` directly. DOM tests use happy-dom via a per-file pragma; focus moves to `<main>` on navigation, not on initial load.
+
+## 2026-10-22 t003-pwa: installable, offline, self-updating
+vite-plugin-pwa 2.0.0 (generateSW, autoUpdate, `injectRegister: false`) builds the SW and manifest at build time; no runtime framework. Registration is hand-written in `src/pwa.ts` with `updateViaCache: "none"` (GitHub Pages serves `max-age=600`) and scope = app path; reload on `controllerchange` only when a previous controller existed. Shared origin: `cacheId: "music-practice"`; workbox cleanup deletes only `-precache-` caches containing this SW's scope, so other apps' caches are untouched. Theme colors, cache id and manifest values are build constants in `pwa-manifest.ts`/`vite.config.ts`, not tunable defaults, so outside `src/config.ts`. `navigator.storage.persist()` is requested at each startup. Deploy workflow uses Node 22 (plugin needs >=20.19).

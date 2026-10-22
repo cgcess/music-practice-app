@@ -1,5 +1,7 @@
 import { execSync } from "node:child_process";
 import { defineConfig } from "vitest/config";
+import { VitePWA } from "vite-plugin-pwa";
+import { manifest } from "./pwa-manifest";
 
 export function gitShortCommit(): string {
   try {
@@ -15,6 +17,21 @@ export function gitShortCommit(): string {
 export default defineConfig({
   base: "./",
   define: { __APP_VERSION__: JSON.stringify(gitShortCommit()) },
+  plugins: [
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: false,
+      manifest,
+      workbox: {
+        cacheId: "music-practice",
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        navigateFallback: "index.html",
+        globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
+      },
+    }),
+  ],
   test: {
     globalSetup: ["tests/globalSetup.ts"],
     include: ["tests/**/*.test.ts"],
