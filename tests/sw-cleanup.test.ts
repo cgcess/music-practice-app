@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Real filter used by the generated SW (cleanupOutdatedCaches).
+// Coupled to the plugin's workbox version: bump workbox-precaching together with vite-plugin-pwa.
 import { deleteOutdatedCaches } from "workbox-precaching/utils/deleteOutdatedCaches.js";
 
 const SCOPE = "https://cgcess.github.io/music-practice-app/";

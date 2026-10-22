@@ -4,6 +4,11 @@ import type { ManifestOptions } from "vite-plugin-pwa";
 export const THEME_COLOR = "#1f3a5f";
 export const BACKGROUND_COLOR = "#ffffff";
 
+/** Replaces the __THEME_COLOR__ placeholder in index.html so THEME_COLOR is the only literal. */
+export function injectThemeColor(html: string): string {
+  return html.replaceAll("__THEME_COLOR__", THEME_COLOR);
+}
+
 export const manifest: Partial<ManifestOptions> = {
   name: "Music Practice",
   short_name: "Practice",

@@ -10,7 +10,7 @@ void requestPersistence(navigator.storage);
 void registerServiceWorker({
   prod: import.meta.env.PROD,
   baseUrl: import.meta.env.BASE_URL,
-  serviceWorker: navigator.serviceWorker as unknown as Parameters<typeof registerServiceWorker>[0]["serviceWorker"],
+  serviceWorker: navigator.serviceWorker,
   reload: () => location.reload(),
   onVisible: (fn) =>
     document.addEventListener("visibilitychange", () => {
