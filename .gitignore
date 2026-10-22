@@ -1,6 +1,3 @@
 node_modules/
 dist/
-.claude/work/
-.claude/state.md
-.claude/unlock-*
-.claude/settings.local.json
+.claude/
