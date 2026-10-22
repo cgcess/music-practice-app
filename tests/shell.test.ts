@@ -78,4 +78,39 @@ describe("shell", () => {
     await p;
     expect(document.querySelector("main h1")?.textContent).toBe(before);
   });
+  it("calls the previous view's dispose when navigating away", async () => {
+    let disposed = 0;
+    unsub = mountShell(document.body, {
+      today: {
+        listTasks: async () => [],
+        addTask: async () => {},
+        setCompleted: async () => {},
+        getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
+      },
+      todayEnv: {
+        port: {
+          listTasks: async () => [],
+          addTask: async () => {},
+          setCompleted: async () => {},
+          getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
+        },
+        now: () => Date.now(),
+        feedback: {
+          prime() {},
+          chime() {},
+          acquireWakeLock() {},
+          releaseWakeLock() {},
+          dispose: () => {
+            disposed++;
+          },
+        },
+        every: () => () => {},
+        after: () => () => {},
+        onVisible: () => () => {},
+      },
+    });
+    expect(disposed).toBe(0);
+    await nav("#/settings");
+    expect(disposed).toBe(1);
+  });
 });

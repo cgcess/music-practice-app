@@ -18,6 +18,21 @@ export const config = {
     minMinutes: 1,
     maxMinutes: 240,
   },
+  today: {
+    /** How long the "Done - Undo" toast stays. */
+    undoMs: 5000,
+    /** A chime later than this after the target is dropped (returning from background). */
+    chimeGraceMs: 2000,
+    /** Minimum horizontal drag for a swipe, in px. */
+    swipeMinPx: 60,
+    /** |dx| must exceed swipeRatio * |dy| for a swipe. */
+    swipeRatio: 2,
+    tickMs: 250,
+    chimeHz: 880,
+    chimeMs: 300,
+    chimeBeeps: 3,
+    vibrateMs: 300,
+  },
 };
 
 export type Config = typeof config;
