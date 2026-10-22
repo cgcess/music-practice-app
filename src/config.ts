@@ -38,6 +38,12 @@ export const config = {
     springMs: 250,
     /** Add-task sheet slide/fade. */
     sheetMs: 250,
+    /** Open the full-screen focus view when a task starts. false reverts to the row timer only (tapping the running row still opens it). */
+    autoOpenFocus: true,
+    /** Minimum downward drag to close the focus view, in px. */
+    focusCloseMinPx: 120,
+    /** Focus view open/close slide or fade. */
+    focusMs: 300,
   },
 };
 

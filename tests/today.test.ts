@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { config } from "../src/config";
 import type { Feedback } from "../src/ui/feedback";
 import type { NewTask, TaskItem, TimerPrefs, TodayPort } from "../src/ui/ports";
@@ -22,6 +22,8 @@ let toastFn: (() => void) | null;
 let chimes: number;
 let wake: string[];
 let disposedFb: number;
+let views: { dispose: () => void }[] = [];
+const autoOpenDefault = config.today.autoOpenFocus;
 
 const task = (id: string, name: string, minutes: number, days: TaskItem["days"] = "daily", last: string | null = null): TaskItem => ({
   id,
@@ -80,6 +82,7 @@ function mk() {
     onVisible: () => () => {},
   };
   const v = todayView(env);
+  views.push(v);
   document.body.replaceChildren(v.el);
   return v;
 }
@@ -97,6 +100,13 @@ const row = (id: string) => document.querySelector(`li[data-id="${id}"]`) as HTM
 const btn = (id: string) => row(id).querySelector("button.act") as HTMLButtonElement;
 const timeOf = (id: string) => row(id).querySelector(".time")!.textContent;
 
+afterEach(() => {
+  for (const v of views) v.dispose();
+  views = [];
+  config.today.autoOpenFocus = autoOpenDefault;
+  document.body.replaceChildren();
+});
+
 beforeEach(() => {
   // Thursday 2026-10-22, local noon.
   clock = new Date(2026, 9, 22, 12).getTime();
@@ -107,6 +117,7 @@ beforeEach(() => {
     task("d", "Etudes", 20, "daily", "2026-10-22"),
   ];
   prefs = { sound: true, vibrate: true, overtime: true };
+  config.today.autoOpenFocus = false;
   calls = [];
   added = [];
   addError = null;
