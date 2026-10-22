@@ -32,6 +32,12 @@ export const config = {
     chimeMs: 300,
     chimeBeeps: 3,
     vibrateMs: 300,
+    /** Fade/collapse when a row moves between To do and Done. */
+    moveMs: 250,
+    /** Swipe release spring-back. */
+    springMs: 250,
+    /** Add-task sheet slide/fade. */
+    sheetMs: 250,
   },
 };
 

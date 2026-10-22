@@ -6,6 +6,7 @@ import { nowIso } from "./dates";
 import { newId } from "./data/schema";
 import { store } from "./data/store";
 import { mountShell } from "./ui/shell";
+import "./ui/base.css";
 import "./ui/today.css";
 
 log("music-practice start");

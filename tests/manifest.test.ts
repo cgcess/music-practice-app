@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { THEME_COLOR, injectThemeColor, manifest } from "../pwa-manifest";
+import { THEME_COLOR_DARK, THEME_COLOR_LIGHT, injectThemeColor, manifest } from "../pwa-manifest";
 
 describe("manifest", () => {
   it("has required fields, relative to the sub-path", () => {
@@ -26,15 +26,19 @@ describe("manifest", () => {
 });
 
 describe("theme color", () => {
-  it("injectThemeColor replaces the placeholder with THEME_COLOR", () => {
-    const out = injectThemeColor('<meta name="theme-color" content="__THEME_COLOR__" />');
-    expect(out).toContain(`content="${THEME_COLOR}"`);
-    expect(out).not.toContain("__THEME_COLOR__");
-    expect(manifest.theme_color).toBe(THEME_COLOR);
+  it("injectThemeColor replaces both placeholders with distinct values", () => {
+    const out = injectThemeColor(readFileSync("index.html", "utf8"));
+    expect(THEME_COLOR_LIGHT).not.toBe(THEME_COLOR_DARK);
+    expect(out).toContain(`content="${THEME_COLOR_LIGHT}" media="(prefers-color-scheme: light)"`);
+    expect(out).toContain(`content="${THEME_COLOR_DARK}" media="(prefers-color-scheme: dark)"`);
+    expect(out).not.toContain("__THEME_COLOR");
+    expect(manifest.theme_color).toBe(THEME_COLOR_LIGHT);
   });
   it("index.html source has the placeholder and no literal hex", () => {
     const html = readFileSync("index.html", "utf8");
-    expect(html).toContain("__THEME_COLOR__");
+    expect(html).toContain("__THEME_COLOR_LIGHT__");
+    expect(html).toContain("__THEME_COLOR_DARK__");
+    expect(html).toContain("viewport-fit=cover");
     expect(html).not.toMatch(/#[0-9a-f]{6}/i);
   });
 });

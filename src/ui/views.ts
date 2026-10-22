@@ -1,4 +1,5 @@
 import { h } from "./h";
+import type { IconName } from "./icons";
 import type { TodayPort } from "./ports";
 import type { Route } from "./router";
 import { defaultTodayEnv, todayView, type TodayEnv } from "./today";
@@ -23,15 +24,25 @@ const emptyPort: TodayPort = {
   getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
 };
 
+const titled = (title: string, body: string): HTMLElement =>
+  h(
+    "section",
+    { class: "view" },
+    h("header", { class: "large-header" }, h("h1", { class: "large-title" }, title)),
+    h("div", { class: "empty-card" }, body),
+  );
+
 const placeholder =
   (title: string): View =>
-  () => ({ el: h("section", null, h("h1", null, title)) });
+  () => ({ el: titled(title, "Nothing here yet.") });
 
-export function buildRoutes(deps: ViewDeps): (Route<View> & { label: string })[] {
+export type AppRoute = Route<View> & { label: string; icon: IconName };
+
+export function buildRoutes(deps: ViewDeps): AppRoute[] {
   return [
-    { path: "/today", label: "Today", view: () => todayView(deps.todayEnv ?? defaultTodayEnv(deps.today)) },
-    { path: "/repertoire", label: "Repertoire", view: placeholder("Repertoire") },
-    { path: "/settings", label: "Settings", view: placeholder("Settings") },
+    { path: "/today", label: "Today", icon: "today", view: () => todayView(deps.todayEnv ?? defaultTodayEnv(deps.today)) },
+    { path: "/repertoire", label: "Repertoire", icon: "repertoire", view: placeholder("Repertoire") },
+    { path: "/settings", label: "Settings", icon: "settings", view: placeholder("Settings") },
   ];
 }
 
@@ -40,6 +51,4 @@ export const routes = buildRoutes(defaultDeps);
 
 export const defaultPath = "/today";
 
-export const notFound: View = () => ({
-  el: h("section", null, h("h1", null, "Not found"), h("p", null, "That page does not exist.")),
-});
+export const notFound: View = () => ({ el: titled("Not found", "That page does not exist.") });

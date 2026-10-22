@@ -1,18 +1,19 @@
 import { h } from "./h";
+import { icon } from "./icons";
 import { startRouter, parseHash, type Match } from "./router";
 import { buildRoutes, defaultDeps, notFound, defaultPath, type View, type ViewDeps, type ViewResult } from "./views";
 
-/** Mount header, nav and main into root. Returns an unsubscribe fn for the router. */
+/** Mount main, footer and the bottom tab bar into root. Returns an unsubscribe fn for the router. */
 export function mountShell(root: HTMLElement, deps: ViewDeps = defaultDeps): () => void {
   const routes = buildRoutes(deps);
   const links = routes.map((r) =>
-    h("a", { href: "#" + r.path, "data-path": r.path }, r.label),
+    h("a", { href: "#" + r.path, "data-path": r.path }, icon(r.icon), h("span", null, r.label)),
   );
   const main = h("main", { id: "main", tabindex: "-1" });
   root.replaceChildren(
-    h("header", null, h("h1", null, "Music Practice"), h("nav", { "aria-label": "Main" }, links)),
     main,
     h("footer", null, `Version ${__APP_VERSION__}`),
+    h("nav", { class: "tabbar", "aria-label": "Main" }, links),
   );
 
   // Empty hash resolves to the default route.

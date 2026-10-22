@@ -238,6 +238,7 @@ describe("today view", () => {
 });
 
 describe("add form", () => {
+  const openSheet = () => (document.querySelector("button.add-btn") as HTMLButtonElement).click();
   const fill = (name: string, mins: string) => {
     (document.querySelector("#task-name") as HTMLInputElement).value = name;
     (document.querySelector("#task-minutes") as HTMLInputElement).value = mins;
@@ -251,14 +252,16 @@ describe("add form", () => {
   it("submits a daily task", async () => {
     mk();
     await flush();
+    openSheet();
     fill("Long tones", "12");
     await submit();
     expect(added).toEqual([{ name: "Long tones", minutes: 12, days: "daily" }]);
-    expect(err()).toBe("");
+    expect(document.querySelector(".sheet")).toBeNull();
   });
   it("submits chosen weekdays when Daily is unchecked", async () => {
     mk();
     await flush();
+    openSheet();
     (document.querySelector("#task-daily") as HTMLInputElement).checked = false;
     const boxes = document.querySelectorAll<HTMLInputElement>("input[name=day]");
     boxes[1]!.checked = true;
@@ -270,6 +273,7 @@ describe("add form", () => {
   it("rejects an empty name", async () => {
     mk();
     await flush();
+    openSheet();
     fill("  ", "5");
     await submit();
     expect(added).toEqual([]);
@@ -278,6 +282,7 @@ describe("add form", () => {
   it("rejects no weekday and not Daily", async () => {
     mk();
     await flush();
+    openSheet();
     (document.querySelector("#task-daily") as HTMLInputElement).checked = false;
     fill("X", "5");
     await submit();
@@ -288,8 +293,92 @@ describe("add form", () => {
     addError = new Error("minutes: expected integer in 1..240");
     mk();
     await flush();
+    openSheet();
     fill("X", "999");
     await submit();
     expect(err()).toBe("minutes: expected integer in 1..240");
+    expect(document.querySelector(".sheet")).not.toBeNull();
+  });
+  it("opens from + and closes on Cancel, Escape and backdrop without adding", async () => {
+    mk();
+    await flush();
+    expect(document.querySelector(".sheet")).toBeNull();
+    openSheet();
+    expect(document.querySelector(".sheet")).not.toBeNull();
+    (document.querySelector("button.cancel") as HTMLButtonElement).click();
+    expect(document.querySelector(".sheet")).toBeNull();
+    openSheet();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(document.querySelector(".sheet")).toBeNull();
+    openSheet();
+    document.querySelector(".sheet-backdrop")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(document.querySelector(".sheet")).toBeNull();
+    expect(added).toEqual([]);
+  });
+});
+
+describe("today layout", () => {
+  const ids = (sel: string) => [...document.querySelectorAll<HTMLElement>(`${sel} li`)].map((l) => l.dataset.id);
+  it("header shows title, date and summary counts and minutes", async () => {
+    mk();
+    await flush();
+    expect(document.querySelector("h1")?.textContent).toBe("Today");
+    expect(document.querySelector(".date")?.textContent).toMatch(/22/);
+    // due today: a(10), b(5), d(20, done) -> 1 of 3, 15 min left
+    expect(document.querySelector(".summary")?.textContent).toBe("1 of 3 · 15 min left");
+  });
+  it("finishing moves a row from To do to Done and Undo moves it back", async () => {
+    mk();
+    await flush();
+    expect(ids(".todo")).toEqual(["a", "b"]);
+    expect(ids(".done-group")).toEqual(["d"]);
+    btn("a").click();
+    btn("a").click();
+    await flush();
+    expect(ids(".todo")).toEqual(["b"]);
+    expect(ids(".done-group")).toEqual(["a", "d"]);
+    expect(row("a").querySelector("button")).toBeNull();
+    expect(document.querySelector(".summary")?.textContent).toBe("2 of 3 · 5 min left");
+    (document.querySelector("button.undo") as HTMLButtonElement).click();
+    await flush();
+    expect(ids(".todo")).toEqual(["a", "b"]);
+    expect(ids(".done-group")).toEqual(["d"]);
+  });
+  it("Done is collapsible", async () => {
+    mk();
+    await flush();
+    const toggle = document.querySelector("button.group-toggle") as HTMLButtonElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    toggle.click();
+    expect(document.querySelector(".done-group ul")!.hasAttribute("hidden")).toBe(true);
+    expect(document.querySelector("button.group-toggle")!.getAttribute("aria-expanded")).toBe("false");
+  });
+  it("shows empty states", async () => {
+    tasks = [task("c", "Sight reading", 15, [1])];
+    mk();
+    await flush();
+    expect(document.querySelector(".empty-card:not([hidden])")?.textContent).toMatch(/No tasks due/);
+    tasks = [task("d", "Etudes", 20, "daily", "2026-10-22")];
+    mk();
+    await flush();
+    expect(document.querySelector(".todo .empty-card")?.textContent).toBe("All done for today");
+    expect(document.querySelector(".summary")?.textContent).toBe("1 of 1 · all done");
+  });
+  it("each row has a task colour dot", async () => {
+    mk();
+    await flush();
+    expect(row("a").querySelector(".dot")!.getAttribute("style")).toMatch(/var\(--task-\d\)/);
+  });
+  it("a swipe follows the finger, and a cancelled partial drag leaves no drag transform", async () => {
+    mk();
+    await flush();
+    const r = row("a");
+    const body = r.querySelector(".row-body") as HTMLElement;
+    r.dispatchEvent(ev("pointerdown", 0, 0));
+    r.dispatchEvent(ev("pointermove", 30, 2));
+    expect(body.style.transform).toBe("translateX(30px)");
+    r.dispatchEvent(ev("pointercancel", 30, 2));
+    expect(body.style.transform).toBe("");
+    expect(r.classList.contains("running")).toBe(false);
   });
 });
