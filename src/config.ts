@@ -18,6 +18,20 @@ export const config = {
     minMinutes: 1,
     maxMinutes: 240,
   },
+  metronome: {
+    defaultBpm: 100,
+    minBpm: 30,
+    maxBpm: 240,
+    step: 1,
+    /** How far ahead of the audio clock clicks are queued, in ms. */
+    lookaheadMs: 100,
+    /** Scheduler wake-up interval, in ms. */
+    tickMs: 25,
+    clickHz: 1000,
+    clickMs: 30,
+    /** Tempo from the Settings record (defaults to defaultBpm). */
+    bpm: 100,
+  },
   today: {
     /** How long the "Done - Undo" toast stays. */
     undoMs: 5000,
@@ -48,6 +62,7 @@ export function getEffectiveConfig(settings?: Settings | null): Config {
   if (!settings) return config;
   return {
     ...config,
+    metronome: { ...config.metronome, bpm: settings.metronomeBpm },
     songsPerDay: settings.songsPerDay,
     suggestionPeriod: settings.suggestionPeriod,
     timer: {

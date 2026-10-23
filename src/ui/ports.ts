@@ -30,4 +30,8 @@ export interface TodayPort {
   restoreTask(snapshot: TaskSnapshot): Promise<void>;
   setCompleted(id: string, date: string | null): Promise<void>;
   getTimerPrefs(): Promise<TimerPrefs>;
+  /** Saved metronome tempo (config default when nothing is saved). */
+  getTempo(): Promise<number>;
+  /** Persists the tempo; rejects with a validation error when out of range. */
+  setTempo(bpm: number): Promise<void>;
 }

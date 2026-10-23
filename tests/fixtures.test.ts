@@ -16,7 +16,10 @@ describe("fixtures", () => {
     const s = new Store(`fixture-${f}`);
     await s.importBackup(text);
     const out = await s.exportBackup();
-    expect(out.data).toEqual(JSON.parse(text).data);
+    const expected = JSON.parse(text).data;
+    // v1 fixtures predate metronomeBpm: the v1 -> v2 migration adds the literal default 100.
+    if (f.startsWith("v1-") && expected.settings) expected.settings.metronomeBpm = 100;
+    expect(out.data).toEqual(expected);
     await s.close();
   });
 });

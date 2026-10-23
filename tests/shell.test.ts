@@ -101,6 +101,8 @@ describe("shell", () => {
         deleteTask: async (id) => ({ id, name: "", minutes: 1, days: "daily", lastCompletedOn: null, createdAt: "" }),
         restoreTask: async () => {},
         getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
+        getTempo: async () => 100,
+        setTempo: async () => {},
       },
       todayEnv: {
         port: {
@@ -111,6 +113,8 @@ describe("shell", () => {
           deleteTask: async (id) => ({ id, name: "", minutes: 1, days: "daily", lastCompletedOn: null, createdAt: "" }),
           restoreTask: async () => {},
           getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
+          getTempo: async () => 100,
+          setTempo: async () => {},
         },
         now: () => Date.now(),
         feedback: {

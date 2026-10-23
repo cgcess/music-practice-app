@@ -9,5 +9,5 @@ export const song = (o: Partial<Song> = {}): Song => ({
   lastReviewed: "2026-10-22", createdAt: "2026-10-01T09:00:00-04:00", ...o,
 });
 export const settings = () => ({
-  songsPerDay: 3, suggestionPeriod: "daily" as const, timerSound: true, timerVibrate: false, timerOvertime: true,
+  songsPerDay: 3, suggestionPeriod: "daily" as const, timerSound: true, timerVibrate: false, timerOvertime: true, metronomeBpm: 100,
 });

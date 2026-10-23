@@ -16,7 +16,7 @@ export interface PortDeps {
  * via getEffectiveConfig(...).timer (null settings falls back to config.timer).
  */
 export function makeTodayPort(
-  store: Pick<Store, "putTask" | "getTask" | "deleteTask" | "listTasks" | "getSettings">,
+  store: Pick<Store, "putTask" | "getTask" | "deleteTask" | "listTasks" | "getSettings" | "putSettings">,
   deps: PortDeps,
 ): TodayPort {
   return {
@@ -54,6 +54,22 @@ export function makeTodayPort(
     async getTimerPrefs() {
       const { sound, vibrate, overtime } = deps.getEffectiveConfig(await store.getSettings()).timer;
       return { sound, vibrate, overtime };
+    },
+    async getTempo() {
+      return deps.getEffectiveConfig(await store.getSettings()).metronome.bpm;
+    },
+    async setTempo(bpm) {
+      const cur = await store.getSettings();
+      const eff = deps.getEffectiveConfig(cur);
+      const base: Settings = cur ?? {
+        songsPerDay: eff.songsPerDay,
+        suggestionPeriod: eff.suggestionPeriod,
+        timerSound: eff.timer.sound,
+        timerVibrate: eff.timer.vibrate,
+        timerOvertime: eff.timer.overtime,
+        metronomeBpm: eff.metronome.bpm,
+      };
+      await store.putSettings({ ...base, metronomeBpm: bpm });
     },
   };
 }

@@ -1,7 +1,7 @@
 import { config } from "../config";
 import { isLocalDate } from "../dates";
 
-export const schemaVersion = 1;
+export const schemaVersion = 2;
 
 export interface Task {
   id: string;
@@ -26,6 +26,7 @@ export interface Settings {
   timerSound: boolean;
   timerVibrate: boolean;
   timerOvertime: boolean;
+  metronomeBpm: number;
 }
 export type RecordType = "task" | "song" | "settings";
 
@@ -133,7 +134,7 @@ export function validateSong(v: unknown): Song {
 
 export function validateSettings(v: unknown): Settings {
   const o = obj(v, "settings");
-  exactKeys(o, ["songsPerDay", "suggestionPeriod", "timerSound", "timerVibrate", "timerOvertime"], "settings");
+  exactKeys(o, ["songsPerDay", "suggestionPeriod", "timerSound", "timerVibrate", "timerOvertime", "metronomeBpm"], "settings");
   if (o.suggestionPeriod !== "daily" && o.suggestionPeriod !== "weekly") {
     throw new ValidationError('settings.suggestionPeriod: expected "daily" | "weekly"');
   }
@@ -143,6 +144,7 @@ export function validateSettings(v: unknown): Settings {
     timerSound: bool(o.timerSound, "settings.timerSound"),
     timerVibrate: bool(o.timerVibrate, "settings.timerVibrate"),
     timerOvertime: bool(o.timerOvertime, "settings.timerOvertime"),
+    metronomeBpm: int(o.metronomeBpm, "settings.metronomeBpm", config.metronome.minBpm, config.metronome.maxBpm),
   };
 }
 

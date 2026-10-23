@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { config } from "../src/config";
+import type { MetronomeEnv } from "../src/ui/metronome";
 import type { Feedback } from "../src/ui/feedback";
 import type { NewTask, TaskItem, TaskSnapshot, TimerPrefs, TodayPort } from "../src/ui/ports";
 import { todayView, type TodayEnv } from "../src/ui/today";
@@ -28,6 +29,9 @@ let toastFn: (() => void) | null;
 let chimes: number;
 let wake: string[];
 let disposedFb: number;
+let tempo = 100;
+let metroEnv: MetronomeEnv | undefined;
+let tempoSaves: number[] = [];
 let views: { dispose: () => void }[] = [];
 
 const task = (id: string, name: string, minutes: number, days: TaskItem["days"] = "daily", last: string | null = null): TaskItem => ({
@@ -69,6 +73,11 @@ function mk() {
       t.lastCompletedOn = d;
     },
     getTimerPrefs: async () => prefs,
+    getTempo: async () => tempo,
+    setTempo: async (b) => {
+      tempo = b;
+      tempoSaves.push(b);
+    },
   };
   const feedback: Feedback = {
     prime() {},
@@ -104,6 +113,7 @@ function mk() {
       };
     },
     onVisible: () => () => {},
+    metronome: metroEnv,
   };
   const v = todayView(env);
   views.push(v);
@@ -131,6 +141,9 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  tempo = 100;
+  tempoSaves = [];
+  metroEnv = undefined;
   // Thursday 2026-10-22, local noon.
   clock = new Date(2026, 9, 22, 12).getTime();
   tasks = [
@@ -756,5 +769,105 @@ describe("edit and delete", () => {
     await del();
     expect(deleteCalls).toBe(1);
     expect(deleted).toEqual(["a"]);
+  });
+});
+
+describe("metronome on Today", () => {
+  let created = 0;
+  let closed = 0;
+  let clicks = 0;
+  let mtick: (() => void) | null = null;
+  const useFakeMetronome = () => {
+    created = 0;
+    closed = 0;
+    clicks = 0;
+    mtick = null;
+    metroEnv = {
+      createAudioContext: () => {
+        created++;
+        return {
+          currentTime: 0,
+          destination: {},
+          createOscillator: () => ({ frequency: { value: 0 }, connect: () => {}, start: () => clicks++, stop: () => {} }),
+          createGain: () => ({ gain: { value: 0 }, connect: () => {} }),
+          close: () => {
+            closed++;
+          },
+        };
+      },
+      every: (fn) => {
+        mtick = fn;
+        return () => {
+          mtick = null;
+        };
+      },
+      onVisible: () => () => {},
+    };
+  };
+  const editToggle = () => document.querySelector("button.edit-toggle") as HTMLButtonElement;
+  const play = () => document.querySelector(".metro-play") as HTMLButtonElement;
+  const playing = () => play().getAttribute("aria-pressed") === "true";
+
+  it("renders in the header under the title and the task list stays visible collapsed and expanded", async () => {
+    tempo = 140;
+    mk();
+    await flush();
+    const header = document.querySelector("header.large-header")!;
+    expect(header.querySelector(".metronome")).not.toBeNull();
+    expect(header.firstElementChild?.querySelector("h1")?.textContent).toBe("Today");
+    expect(document.querySelector(".metro-bpm")!.textContent).toBe("140 BPM");
+    const t = document.querySelector(".metro-toggle") as HTMLButtonElement;
+    for (let i = 0; i < 2; i++) {
+      expect(document.querySelector("ul.task-list li.task")).not.toBeNull();
+      expect(row("a").hidden).toBe(false);
+      t.click();
+    }
+    expect(document.querySelector(".metro-slider")).not.toBeNull();
+  });
+  it("timer start, finish and edit mode leave the metronome alone, and the reverse", async () => {
+    useFakeMetronome();
+    mk();
+    await flush();
+    play().click();
+    expect(playing()).toBe(true);
+    btn("a").click();
+    expect(playing()).toBe(true);
+    editToggle().click();
+    expect(playing()).toBe(true);
+    editToggle().click();
+    btn("a").click(); // finish
+    await flush();
+    expect(playing()).toBe(true);
+    expect(created).toBe(1);
+    expect(closed).toBe(0);
+    play().click();
+    expect(playing()).toBe(false);
+  });
+  it("metronome play/stop does not start, stop or finish a running task", async () => {
+    useFakeMetronome();
+    mk();
+    await flush();
+    btn("a").click();
+    expect(row("a").classList.contains("running")).toBe(true);
+    play().click();
+    play().click();
+    expect(row("a").classList.contains("running")).toBe(true);
+    expect(calls).toEqual([]);
+    expect(timeOf("a")).not.toBe("");
+  });
+  it("dispose stops the metronome", async () => {
+    useFakeMetronome();
+    const v = mk();
+    await flush();
+    play().click();
+    v.dispose();
+    expect(closed).toBe(1);
+    expect(mtick).toBeNull();
+  });
+  it("saves the tempo through the port", async () => {
+    mk();
+    await flush();
+    (document.querySelector(".metro-step:last-of-type") as HTMLButtonElement).click();
+    expect(tempoSaves).toEqual([101]);
   });
 });

@@ -56,6 +56,20 @@ describe("todayPort", () => {
       overtime: config.timer.overtime,
     });
   });
+  it("tempo: default without a record, round trip, range check, other fields kept", async () => {
+    const { port, store } = setup();
+    expect(await port.getTempo()).toBe(config.metronome.defaultBpm);
+    await port.setTempo(140);
+    expect(await port.getTempo()).toBe(140);
+    expect((await store.getSettings())?.metronomeBpm).toBe(140);
+    await store.putSettings({ ...(await store.getSettings())!, songsPerDay: 5, timerSound: false });
+    await port.setTempo(90);
+    expect(await store.getSettings()).toMatchObject({ songsPerDay: 5, timerSound: false, metronomeBpm: 90 });
+    await expect(port.setTempo(config.metronome.maxBpm + 1)).rejects.toBeInstanceOf(ValidationError);
+    await expect(port.setTempo(config.metronome.minBpm - 1)).rejects.toBeInstanceOf(ValidationError);
+    await expect(port.setTempo(100.5)).rejects.toBeInstanceOf(ValidationError);
+    expect(await port.getTempo()).toBe(90);
+  });
   it("overtime:false settings show time up at 0:00 in the Today view", async () => {
     const { port, store } = setup();
     await store.putSettings({
@@ -64,6 +78,7 @@ describe("todayPort", () => {
       timerSound: false,
       timerVibrate: false,
       timerOvertime: false,
+      metronomeBpm: 100,
     });
     expect(await port.getTimerPrefs()).toEqual({ sound: false, vibrate: false, overtime: false });
     await port.addTask({ name: "S", minutes: 1, days: "daily" });

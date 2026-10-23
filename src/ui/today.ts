@@ -6,6 +6,7 @@ import { TimerController, formatOvertime, formatRemaining } from "../today/timer
 import { applyUndo, prepareUndo, type Undo } from "../today/undo";
 import { browserFeedbackEnv, createFeedback, type Feedback } from "./feedback";
 import { h } from "./h";
+import { browserMetronomeEnv, createMetronomePanel, type MetronomeEnv } from "./metronome";
 import { icon } from "./icons";
 import type { TaskItem, TaskSnapshot, TimerPrefs, TodayPort } from "./ports";
 import { openSheet, type Sheet } from "./sheet";
@@ -22,6 +23,8 @@ export interface TodayEnv {
   /** One-shot callback; returns cancel. */
   after: (fn: () => void, ms: number) => () => void;
   onVisible: (fn: () => void) => () => void;
+  /** Metronome audio/timer/visibility seam; defaults to the browser. */
+  metronome?: MetronomeEnv;
 }
 
 export function defaultTodayEnv(port: TodayPort): TodayEnv {
@@ -39,6 +42,7 @@ export function defaultTodayEnv(port: TodayPort): TodayEnv {
       return () => clearTimeout(id);
     },
     onVisible: fenv.onVisible,
+    metronome: browserMetronomeEnv(),
   };
 }
 
@@ -75,6 +79,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const summaryEl = h("p", { class: "summary" });
   const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add task", onClick: () => openForm() }, icon("plus"));
   const editToggle = h("button", { type: "button", class: "edit-toggle", onClick: () => toggleEditMode() }, "Edit");
+  const metronome = createMetronomePanel({ port: env.port, env: env.metronome ?? browserMetronomeEnv() });
   const todoEmpty = h("div", { class: "empty-card" });
   const emptyDue = h("div", { class: "empty-card" }, "No tasks due today. Tap + to add one.");
   const todoGroup = h("section", { class: "group todo" }, h("h2", { class: "group-title" }, "To do"), todoEmpty, todoList);
@@ -83,7 +88,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const el = h(
     "section",
     { class: "today" },
-    h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), editToggle, addBtn), dateEl, summaryEl),
+    h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), editToggle, addBtn), dateEl, summaryEl, metronome.el),
     emptyDue,
     todoGroup,
     doneGroup,
@@ -448,6 +453,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     el,
     dispose() {
       disposed = true;
+      metronome.dispose();
       sheet?.close();
       stopTick();
       cancelToast?.();

@@ -25,6 +25,8 @@ const emptyPort: TodayPort = {
   restoreTask: async () => {},
   setCompleted: async () => {},
   getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
+  getTempo: async () => 100,
+  setTempo: async () => {},
 };
 
 const titled = (title: string, body: string): HTMLElement =>

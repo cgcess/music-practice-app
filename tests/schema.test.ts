@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { config } from "../src/config";
 import {
-  validateRecord, validateSettings, validateSong, validateTask, ValidationError, newId,
+  schemaVersion, validateRecord, validateSettings, validateSong, validateTask, ValidationError, newId,
 } from "../src/data/schema";
 import { settings, song, task } from "./helpers";
 
@@ -54,6 +55,17 @@ describe("settings and records", () => {
     expect(() => validateSettings({ ...settings(), suggestionPeriod: "monthly" })).toThrow(ValidationError);
     expect(() => validateSettings({ ...settings(), timerSound: "yes" })).toThrow(ValidationError);
     expect(() => validateSettings({ ...settings(), extra: true })).toThrow(/unknown field/);
+  });
+  it("has schemaVersion 2", () => expect(schemaVersion).toBe(2));
+  it("rejects bad metronomeBpm", () => {
+    const { metronomeBpm: _drop, ...missing } = settings();
+    expect(() => validateSettings(missing)).toThrow(/missing field "metronomeBpm"/);
+    expect(() => validateSettings({ ...settings(), metronomeBpm: 100.5 })).toThrow(ValidationError);
+    expect(() => validateSettings({ ...settings(), metronomeBpm: "100" })).toThrow(ValidationError);
+    expect(() => validateSettings({ ...settings(), metronomeBpm: config.metronome.minBpm - 1 })).toThrow(ValidationError);
+    expect(() => validateSettings({ ...settings(), metronomeBpm: config.metronome.maxBpm + 1 })).toThrow(ValidationError);
+    expect(validateSettings({ ...settings(), metronomeBpm: config.metronome.minBpm }).metronomeBpm).toBe(config.metronome.minBpm);
+    expect(validateSettings({ ...settings(), metronomeBpm: config.metronome.maxBpm }).metronomeBpm).toBe(config.metronome.maxBpm);
   });
   it("rejects unknown record type", () => {
     expect(() => validateRecord("playlist", {})).toThrow(/unknown record type/);
