@@ -5,6 +5,8 @@
  *  - Today header at rest, partial (full stops), p=0.5 (sRGB blend of rest and full) and bloom (all stops):
  *    title, .date, .summary, Edit toggle, add button glyph on its tint. On bloom the ink is white.
  *  - Repertoire wash: title on --rest-1/--rest-2.
+ *  - t018 strength bar: segments at 100/82/65% of the header ink and the 65% "not yet" outline (>= 3:1 vs
+ *    each Today state, the Repertoire wash and the page), counts text (>= 4.5:1; Repertoire uses --head-ink-2).
  *  - Undo on the toast; success text on card and page; warning text on card.
  *  - Rate buttons: rough, ok, solid (tinted fills with coloured text).
  *  - Running act icon (on-accent on accent); swipe icons (on-accent on accent, on-success on success-fill).
@@ -91,6 +93,17 @@ describe.each(["light", "dark"] as const)("contrast (%s)", (theme) => {
 
   it("Repertoire wash title", () => {
     for (const k of ["--rest-1", "--rest-2"]) check("repertoire wash: title", label, solid(t(k)), 4.5);
+  });
+  it("strength bar segments, outline and counts text", () => {
+    const shades = { well: 1, okay: 0.82, poorly: 0.65, "not yet outline": 0.65 };
+    const run = (where: string, ink: RGB, stops: RGB[]) => {
+      for (const bg of stops) for (const [n, pct] of Object.entries(shades)) check(`bar ${where}: ${n}`, mix(ink, bg, pct), bg, 3);
+    };
+    for (const [name, stops] of Object.entries(states)) run(`today ${name}`, name === "bloom" ? solid(t("--bloom-ink")) : label, stops);
+    const wash = [solid(t("--rest-1")), solid(t("--rest-2"))];
+    run("repertoire wash", label, wash);
+    run("page", label, [page]);
+    for (const bg of wash) check("counts text on repertoire wash (--head-ink-2)", over(t("--head-ink-2"), bg), bg, 4.5);
   });
   it("Undo on the toast", () => {
     check("toast: Undo", solid(t("--toast-undo")), solid(t("--toast-bg")), 4.5);

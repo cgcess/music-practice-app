@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { formatSummary } from "../src/today/summary";
 import { config } from "../src/config";
-import type { SongRating, SongSnapshot, TodayPort, TodaySong } from "../src/ui/ports";
+import type { SongRating, SongSnapshot, StrengthCounts, TodayPort, TodaySong } from "../src/ui/ports";
 import { todayView, type TodayEnv } from "../src/ui/today";
 
 const flush = async () => {
@@ -18,6 +18,8 @@ let restored: SongSnapshot[];
 let rateError: Error | null;
 let songGate: Promise<void> | null = null;
 let songFail = false;
+const zero = (): StrengthCounts => ({ well: 0, okay: 0, poorly: 0, fresh: 0 });
+let strengthImpl: () => Promise<StrengthCounts> = async () => zero();
 let afterMs: number[];
 let toastFn: (() => void) | null;
 let views: { dispose: () => void }[] = [];
@@ -34,6 +36,7 @@ const port = (): TodayPort => ({
   },
   getTimerPrefs: async () => ({ sound: false, vibrate: false, overtime: true }),
   getTempo: async () => 100,
+  repertoireStrength: () => strengthImpl(),
   setTempo: async () => {},
   listTodaySongs: async () => {
     if (songGate) await songGate;
@@ -101,6 +104,7 @@ beforeEach(() => {
   rateError = null;
   songGate = null;
   songFail = false;
+  strengthImpl = async () => ({ well: 1, okay: 1, poorly: 0, fresh: 0 });
   afterMs = [];
   toastFn = null;
   tasks = [{ id: "t1", name: "Scales", minutes: 5, days: "daily", lastCompletedOn: null }];
@@ -540,5 +544,70 @@ describe("source hygiene (t017)", () => {
       expect(src).not.toMatch(/innerHTML/);
       expect(src).not.toMatch(/from "\.\.\/data/);
     }
+  });
+});
+
+const barLabel = () => document.querySelector('.today [role="img"]')?.getAttribute("aria-label");
+const bar = () => document.querySelector(".today .strength") as HTMLElement;
+
+describe("repertoire strength bar on Today", () => {
+  it("sits in the header after the summary, before the metronome, with the whole-repertoire label", async () => {
+    await mount();
+    expect(bar().hidden).toBe(false);
+    expect(barLabel()).toBe("Repertoire: 1 well, 1 ok");
+    const header = document.querySelector(".today header")!;
+    const kids = [...header.children];
+    expect(kids.indexOf(bar())).toBe(kids.indexOf(header.querySelector(".summary")!) + 1);
+    expect(kids.indexOf(bar())).toBe(kids.length - 2); // the metronome panel is the last header child
+  });
+  it("is shown with songsPerDay = 0", async () => {
+    spd = 0;
+    songs = [];
+    await mount();
+    expect(section().hidden).toBe(true);
+    expect(bar().hidden).toBe(false);
+  });
+  it("is hidden with no songs, and before the first successful read", async () => {
+    strengthImpl = async () => zero();
+    await mount();
+    expect(bar().hidden).toBe(true);
+    views.pop()!.dispose();
+    strengthImpl = async () => {
+      throw new Error("nope");
+    };
+    await mount();
+    expect(bar().hidden).toBe(true);
+  });
+  it("has no animate class on first paint", async () => {
+    await mount();
+    expect(bar().classList.contains("animate")).toBe(false);
+  });
+  it("updates after rating and after Undo, animating from the handler", async () => {
+    await mount();
+    strengthImpl = async () => ({ well: 2, okay: 1, poorly: 0, fresh: 0 });
+    body("a").click();
+    rateBtn("a", "solid").click();
+    await flush();
+    expect(barLabel()).toBe("Repertoire: 2 well, 1 ok");
+    expect(bar().classList.contains("animate")).toBe(true);
+    strengthImpl = async () => ({ well: 1, okay: 1, poorly: 1, fresh: 0 });
+    (document.querySelector(".toast button.undo") as HTMLButtonElement).click();
+    await flush();
+    expect(barLabel()).toBe("Repertoire: 1 well, 1 ok, 1 poorly");
+  });
+  it("an older response that resolves last never overwrites a newer one", async () => {
+    await mount();
+    let late!: (c: StrengthCounts) => void;
+    strengthImpl = () => new Promise((r) => (late = r));
+    body("a").click();
+    rateBtn("a", "solid").click();
+    await flush();
+    const resolveRate = late;
+    strengthImpl = async () => ({ well: 0, okay: 5, poorly: 0, fresh: 0 });
+    (document.querySelector(".toast button.undo") as HTMLButtonElement).click();
+    await flush();
+    resolveRate({ well: 9, okay: 0, poorly: 0, fresh: 0 });
+    await flush();
+    expect(barLabel()).toBe("Repertoire: 5 ok");
   });
 });

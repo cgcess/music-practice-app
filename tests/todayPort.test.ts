@@ -23,6 +23,16 @@ const setup = () => {
 };
 
 describe("todayPort", () => {
+  it("repertoireStrength counts the whole repertoire and writes nothing", async () => {
+    const { port, store } = setup();
+    await store.putSong(song({ id: "a", ease: 2.8 }));
+    await store.putSong(song({ id: "b", ease: 2.5 }));
+    await store.putSong(song({ id: "c", ease: 2.0 }));
+    await store.putSong(song({ id: "d", ease: 3.0, lastReviewed: null }));
+    const before = await store.listSongs();
+    expect(await port.repertoireStrength()).toEqual({ well: 1, okay: 1, poorly: 1, fresh: 1 });
+    expect(await store.listSongs()).toEqual(before);
+  });
   it("adds a full task and lists it", async () => {
     const { port, store } = setup();
     await port.addTask({ name: "Scales", minutes: 10, days: "daily" });

@@ -3,6 +3,7 @@ import { config } from "../config";
 import { todayLocal } from "../dates";
 import type { Settings, Song } from "../data/schema";
 import { newSong } from "../sr/scheduler";
+import { strengthCounts } from "../sr/strength";
 import type { RepertoirePort } from "../ui/ports";
 import type { PortDeps } from "./todayPort";
 import { topUpToday } from "./topUp";
@@ -109,6 +110,9 @@ export function makeRepertoirePort(
     },
     async restoreSong(snapshot) {
       await store.putSong(snapshot);
+    },
+    async repertoireStrength() {
+      return strengthCounts(await store.listSongs());
     },
   };
 }

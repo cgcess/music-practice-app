@@ -22,6 +22,10 @@ export const config = {
     fuzzMinIntervalDays: 3,
     /** A new song is first due 0..this many days after it is added. */
     newSongSpreadDays: 7,
+    /** Repertoire strength bar: ease at or above this counts as "well". */
+    wellEase: 2.6,
+    /** Repertoire strength bar: ease below this counts as "poorly". */
+    poorEase: 2.4,
   },
   /** Upper bound of the songs-per-day stepper on the Repertoire tab. */
   maxSongsPerDay: 10,

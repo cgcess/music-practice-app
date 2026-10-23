@@ -33,6 +33,7 @@ const emptyPort: TodayPort = {
   listTodaySongs: async () => ({ songsPerDay: config.songsPerDay, songs: [] }),
   rateTodaySong: async (id) => ({ id, title: "", dueDate: "1970-01-01", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" }),
   restoreTodaySong: async () => {},
+  repertoireStrength: async () => ({ well: 0, okay: 0, poorly: 0, fresh: 0 }),
 };
 
 const emptyRepertoire: RepertoirePort = {
@@ -44,6 +45,7 @@ const emptyRepertoire: RepertoirePort = {
   renameSong: async () => {},
   deleteSong: async (id) => ({ id, title: "", dueDate: "1970-01-01", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" }),
   restoreSong: async () => {},
+  repertoireStrength: async () => ({ well: 0, okay: 0, poorly: 0, fresh: 0 }),
 };
 
 const titled = (title: string, body: string): HTMLElement =>

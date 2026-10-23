@@ -13,3 +13,4 @@
 .song .chev { display: grid; color: var(--label-2); }
 .song .chev svg { width: 14px; height: 14px; }
 .sheet textarea { width: 100%; min-height: 160px; margin-top: var(--space-1); padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--label); font: inherit; font-size: 16px; resize: vertical; }
+.repertoire .strength { --sb-ink: var(--label); --sb-text: var(--head-ink-2); }

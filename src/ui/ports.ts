@@ -27,6 +27,13 @@ export interface TodaySong {
   title: string;
   ratedToday: boolean;
 }
+/** Whole-repertoire split for the strength bar. `fresh` = not yet practiced. */
+export interface StrengthCounts {
+  well: number;
+  okay: number;
+  poorly: number;
+  fresh: number;
+}
 export interface TodayPort {
   listTasks(): Promise<TaskItem[]>;
   addTask(t: NewTask): Promise<void>;
@@ -46,6 +53,8 @@ export interface TodayPort {
   /** Applies the scheduler and returns the previous record for Undo; rejects when already rated today. */
   rateTodaySong(id: string, rating: SongRating): Promise<SongSnapshot>;
   restoreTodaySong(snapshot: SongSnapshot): Promise<void>;
+  /** Strength buckets for the whole repertoire (read only). */
+  repertoireStrength(): Promise<StrengthCounts>;
 }
 
 /** Repertoire tab port (see src/app/repertoirePort.ts). */
@@ -79,4 +88,6 @@ export interface RepertoirePort {
   /** Removes the song and returns its full record so it can be restored. */
   deleteSong(id: string): Promise<SongSnapshot>;
   restoreSong(snapshot: SongSnapshot): Promise<void>;
+  /** Strength buckets for the whole repertoire (read only). */
+  repertoireStrength(): Promise<StrengthCounts>;
 }

@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { createStrengthBar } from "./strengthBar";
 import { todayLocal } from "../dates";
 import { isDoneToday, isDueToday } from "../today/due";
 import { dayProgress } from "../today/progress";
@@ -93,6 +94,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const summaryEl = h("p", { class: "summary" });
   const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add task", onClick: () => openForm() }, icon("plus"));
   const editToggle = h("button", { type: "button", class: "edit-toggle", onClick: () => toggleEditMode() }, "Edit");
+  const strength = createStrengthBar();
   const metronome = createMetronomePanel({ port: env.port, env: env.metronome ?? browserMetronomeEnv() });
   const todoEmpty = h("div", { class: "empty-card" });
   const emptyDue = h("div", { class: "empty-card" }, "No tasks due today. Tap + to add one.");
@@ -108,7 +110,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     "section",
     { class: "today no-anim state-rest" },
     hero,
-    h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), editToggle, addBtn), dateEl, summaryEl, metronome.el),
+    h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), editToggle, addBtn), dateEl, summaryEl, strength.el, metronome.el),
     emptyDue,
     todoGroup,
     songSection,
@@ -478,7 +480,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     if (focusId) el.querySelector<HTMLElement>(`[data-song-body="${focusId}"]`)?.focus();
   };
 
+  /** Whole-repertoire bar; independent of today's songs (shown even when songsPerDay is 0). */
+  const refreshStrength = (animate: boolean) => void strength.refresh(() => env.port.repertoireStrength(), animate);
+
   const loadSongs = async () => {
+    refreshStrength(false);
     try {
       const r = await env.port.listTodaySongs();
       songs = r.songs;
@@ -506,6 +512,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       return;
     }
     songRatings.set(id, rating);
+    refreshStrength(true);
     s.ratedToday = true;
     openSong = null;
     if (!reduceMotion()) popSongs.add(id);
@@ -525,6 +532,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       return;
     }
     songRatings.delete(id);
+    refreshStrength(true);
     const s = songs.find((x) => x.id === id);
     if (s) s.ratedToday = false;
     renderSongs();

@@ -6,7 +6,7 @@ import { fnv1a32, rand01 } from "./hash";
 export type Rating = (typeof config.sr.ratingScale)[number];
 type SrConfig = typeof config.sr;
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+export const round2 = (n: number) => Math.round(n * 100) / 100;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 /** Round, fuzz (seeded, only when the rounded base is long enough), then clamp to 1..max. */

@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { createStrengthBar } from "./strengthBar";
 import { todayLocal } from "../dates";
 import { dueText } from "../sr/dueText";
 import { h } from "./h";
@@ -43,6 +44,7 @@ export function repertoireView(
   const stepper = h("div", { class: "stepper", role: "group", "aria-label": "Songs per day" }, h("span", { class: "stepper-label" }, "Per day"), minus, valueEl, plus);
   const bulkBtn = h("button", { type: "button", class: "bulk-btn", onClick: () => openBulk() }, "Bulk add");
   const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add song", onClick: () => openAdd() }, icon("plus"));
+  const strength = createStrengthBar();
   const el = h(
     "section",
     { class: "repertoire" },
@@ -50,6 +52,7 @@ export function repertoireView(
       "header",
       { class: "large-header wash" },
       h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Repertoire"), h("div", { class: "title-actions" }, bulkBtn, addBtn)),
+      strength.el,
       stepper,
     ),
     empty,
@@ -98,7 +101,9 @@ export function repertoireView(
       ),
     );
   };
+  const refreshStrength = (animate: boolean) => void strength.refresh(() => port.repertoireStrength(), animate);
   const reload = async () => {
+    refreshStrength(true);
     songs = await port.listSongs();
     if (!disposed) render();
   };
@@ -116,6 +121,7 @@ export function repertoireView(
   };
 
   const load = async () => {
+    refreshStrength(false);
     try {
       perDay = await port.getSongsPerDay();
       songs = await port.listSongs();

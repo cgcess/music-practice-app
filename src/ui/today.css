@@ -240,3 +240,5 @@
   /* The gradient may still change colour, but instantly. */
   .today, .today * { transition: none !important; }
 }
+.today .strength { --sb-ink: var(--label); --sb-text: var(--head-ink-2); }
+.today.state-daydone .strength { --sb-ink: var(--bloom-ink); --sb-text: var(--bloom-ink-2); }

@@ -79,6 +79,7 @@ function mk() {
     },
     getTimerPrefs: async () => prefs,
     getTempo: async () => tempo,
+    repertoireStrength: async () => ({ well: 0, okay: 0, poorly: 0, fresh: 0 }),
     setTempo: async (b) => {
       tempo = b;
       tempoSaves.push(b);
