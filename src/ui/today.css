@@ -58,7 +58,9 @@
 .task .time { min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
 .task .time:empty { display: none; }
 .task.running .mins { display: none; }
-.task.running .row-body { background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated)); }
+.task.running .row-body { background: var(--row-running); }
+.task.running.overtime .row-body { background: var(--row-overtime); }
+.task.running .time, .task.running .name { color: var(--label); }
 .task.done .name { text-decoration: line-through; color: var(--label-2); }
 .task.done .status { color: var(--success); }
 .task button.act {

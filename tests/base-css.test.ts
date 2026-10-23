@@ -19,6 +19,24 @@ describe("base.css", () => {
       }
     }
   });
+  it("row state tokens are defined in both themes", () => {
+    for (const block of [light, dark]) {
+      for (const n of ["--row-running", "--row-overtime"]) expect(val(block, n)).toBeTruthy();
+    }
+  });
+  it("running row rules use the tokens and no literal colours", () => {
+    const today = readFileSync("src/ui/today.css", "utf8");
+    const running = /\.task\.running \.row-body\s*\{[^}]*\}/.exec(today)![0];
+    const over = /\.task\.running\.overtime \.row-body\s*\{[^}]*\}/.exec(today)![0];
+    const text = /\.task\.running \.time, \.task\.running \.name\s*\{[^}]*\}/.exec(today)![0];
+    expect(running).toContain("var(--row-running)");
+    expect(over).toContain("var(--row-overtime)");
+    expect(text).toContain("var(--label)");
+    for (const r of [running, over, text]) expect(r).not.toMatch(/#|rgb\(/);
+  });
+  it("focus view styles are gone", () => {
+    expect(css).not.toMatch(/\.focus\b(?!-visible)|\.ring\b|focus-ms/);
+  });
   it("has the platform hooks", () => {
     for (const s of [
       "color-scheme",

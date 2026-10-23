@@ -23,7 +23,6 @@ let chimes: number;
 let wake: string[];
 let disposedFb: number;
 let views: { dispose: () => void }[] = [];
-const autoOpenDefault = config.today.autoOpenFocus;
 
 const task = (id: string, name: string, minutes: number, days: TaskItem["days"] = "daily", last: string | null = null): TaskItem => ({
   id,
@@ -103,7 +102,6 @@ const timeOf = (id: string) => row(id).querySelector(".time")!.textContent;
 afterEach(() => {
   for (const v of views) v.dispose();
   views = [];
-  config.today.autoOpenFocus = autoOpenDefault;
   document.body.replaceChildren();
 });
 
@@ -117,7 +115,6 @@ beforeEach(() => {
     task("d", "Etudes", 20, "daily", "2026-10-22"),
   ];
   prefs = { sound: true, vibrate: true, overtime: true };
-  config.today.autoOpenFocus = false;
   calls = [];
   added = [];
   addError = null;
@@ -235,6 +232,70 @@ describe("today view", () => {
     expect(config.today.undoMs).toBeGreaterThan(0);
     toastFn!();
     expect(document.querySelector(".toast")!.textContent).toBe("");
+  });
+
+  describe("row state classes", () => {
+    const has = (id: string, c: string) => row(id).classList.contains(c);
+    const overlay = () => document.querySelector(".focus, .focus-time");
+    it("start: running only, no overlay; tapping the row opens nothing", async () => {
+      mk();
+      await flush();
+      btn("a").click();
+      expect(has("a", "running")).toBe(true);
+      expect(has("a", "overtime")).toBe(false);
+      expect(overlay()).toBeNull();
+      (row("a").querySelector(".row-body") as HTMLElement).click();
+      expect(overlay()).toBeNull();
+      expect(has("a", "running")).toBe(true);
+    });
+    it("overtime on: running overtime with +m:ss past target", async () => {
+      mk();
+      await flush();
+      btn("b").click();
+      clock += 4 * MIN;
+      tickFn!();
+      expect(has("b", "overtime")).toBe(false);
+      clock += 2 * MIN;
+      tickFn!();
+      expect(has("b", "running")).toBe(true);
+      expect(has("b", "overtime")).toBe(true);
+      expect(timeOf("b")).toBe("+1:00");
+    });
+    it("overtime off: time up uses the overtime class", async () => {
+      prefs.overtime = false;
+      mk();
+      await flush();
+      btn("b").click();
+      clock += 6 * MIN;
+      tickFn!();
+      expect(has("b", "overtime")).toBe(true);
+      expect(timeOf("b")).toContain("time up");
+    });
+    it("finish clears both classes", async () => {
+      mk();
+      await flush();
+      btn("b").click();
+      clock += 6 * MIN;
+      tickFn!();
+      btn("b").click();
+      await flush();
+      expect(has("b", "done")).toBe(true);
+      expect(has("b", "running")).toBe(false);
+      expect(has("b", "overtime")).toBe(false);
+    });
+    it("starting another task clears both classes on the first", async () => {
+      mk();
+      await flush();
+      btn("a").click();
+      clock += 11 * MIN;
+      tickFn!();
+      expect(has("a", "overtime")).toBe(true);
+      btn("b").click();
+      expect(has("a", "running")).toBe(false);
+      expect(has("a", "overtime")).toBe(false);
+      expect(has("b", "running")).toBe(true);
+      expect(has("b", "overtime")).toBe(false);
+    });
   });
 
   it("dispose clears the interval, releases the wake lock and feedback", async () => {

@@ -12,6 +12,8 @@
   --accent: #5856d6;
   --accent-tint: rgba(88, 86, 214, 0.12);
   --on-accent: #ffffff;
+  --row-running: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  --row-overtime: color-mix(in srgb, var(--warning) 28%, var(--bg-elevated));
   --success: #34c759;
   --warning: #ff9500;
   --danger: #ff3b30;
@@ -56,6 +58,8 @@
     --bar-bg: rgba(29, 29, 31, 0.8);
     --accent: #5e5ce6;
     --accent-tint: rgba(94, 92, 230, 0.22);
+    --row-running: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+    --row-overtime: color-mix(in srgb, var(--warning) 28%, var(--bg-elevated));
     --success: #30d158;
     --warning: #ff9f0a;
     --danger: #ff453a;
@@ -226,54 +230,9 @@ footer {
 .sheet-actions button { flex: 1; min-height: 48px; border: 0; border-radius: var(--radius-md); background: var(--fill); font-weight: 600; }
 .sheet-actions button[type="submit"] { background: var(--accent); color: var(--on-accent); }
 
-/* Focus view (full screen, same layer as the sheet, above the tab bar) */
-.focus {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: calc(env(safe-area-inset-top) + var(--space-3)) calc(env(safe-area-inset-right) + var(--space-4)) calc(env(safe-area-inset-bottom) + var(--space-5)) calc(env(safe-area-inset-left) + var(--space-4));
-  background: var(--bg);
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  animation: slide-up var(--focus-ms, 300ms) var(--ease);
-  transition: transform var(--focus-ms, 300ms) var(--ease), opacity var(--focus-ms, 300ms) var(--ease);
-}
-.focus.dragging { transition: none; }
-.focus.closing { transform: translateY(100%) !important; opacity: 0; pointer-events: none; }
-.focus:focus { outline: none; }
-.focus-close {
-  align-self: flex-start;
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  background: var(--fill);
-  color: var(--label);
-}
-.focus-close svg { width: 22px; height: 22px; transform: rotate(90deg); }
-.focus-name { font-size: var(--fs-title); font-weight: 600; text-align: center; overflow-wrap: anywhere; }
-.ring-wrap { position: relative; width: min(80vw, 60vh, 420px); aspect-ratio: 1; display: grid; place-items: center; }
-.ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-.ring-track { stroke: var(--fill); }
-.ring-bar { transition: stroke-dashoffset 250ms linear, stroke 250ms var(--ease); }
-.focus-time { position: relative; font-size: clamp(48px, 18vw, 96px); font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; }
-.focus[data-phase="overtime"] .focus-time { color: var(--warning); }
-.focus[data-phase="timesup"] .focus-time { color: var(--label-2); font-size: clamp(32px, 11vw, 64px); }
-.focus-finish { width: 100%; max-width: 420px; min-height: 56px; border: 0; border-radius: var(--radius-md); background: var(--accent); color: var(--on-accent); font-size: var(--fs-body); font-weight: 600; }
-
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slide-up { from { transform: translateY(100%); } to { transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-  .focus { animation-name: fade-in; }
-  .focus.closing { transform: none !important; }
 }

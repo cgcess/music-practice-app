@@ -5,7 +5,6 @@ import { formatDate, formatSummary, summarize } from "../today/summary";
 import { TimerController, formatOvertime, formatRemaining } from "../today/timer";
 import { applyUndo, prepareUndo, type Undo } from "../today/undo";
 import { browserFeedbackEnv, createFeedback, type Feedback } from "./feedback";
-import { openFocus, type FocusHandle } from "./focus";
 import { h } from "./h";
 import { icon } from "./icons";
 import type { TaskItem, TimerPrefs, TodayPort } from "./ports";
@@ -65,8 +64,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const entering = new Set<string>();
   let doneOpen = true;
   let sheet: Sheet | null = null;
-  let focus: FocusHandle | null = null;
-  let focusTaskId: string | null = null;
 
   const todoList = h("ul", { class: "task-list inset-list" });
   const doneList = h("ul", { class: "task-list inset-list" });
@@ -104,6 +101,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     return s.taskId === id && (s.phase === "running" || s.phase === "overtime" || s.phase === "timesup");
   };
 
+  const overtimeNow = () => {
+    const p = timer.snapshot().phase;
+    return p === "overtime" || p === "timesup";
+  };
+
   const timeText = (): string => {
     const s = timer.snapshot();
     if (s.phase === "running") return formatRemaining(s.remainingMs);
@@ -118,37 +120,10 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     for (const t of el.querySelectorAll<HTMLElement>(".time")) {
       t.textContent = t.dataset.id === s.taskId ? timeText() : "";
     }
-    if (focus && focusTaskId) {
-      // Time's up keeps the view open until Finish: close only when the task is no longer running.
-      if (!isRunning(focusTaskId)) closeFocus();
-      else focus.update(s);
+    const over = overtimeNow();
+    for (const li of el.querySelectorAll<HTMLElement>("li.task")) {
+      li.classList.toggle("overtime", li.classList.contains("running") && li.dataset.id === s.taskId && over);
     }
-  };
-
-  const closeFocus = () => {
-    focus?.close(true, { restoreFocus: false });
-    focus = null;
-    focusTaskId = null;
-  };
-
-  const showFocus = (task: TaskItem) => {
-    if (focus || disposed || !isRunning(task.id)) return;
-    focusTaskId = task.id;
-    focus = openFocus({
-      task,
-      snap: timer.snapshot(),
-      onFinish: () => {
-        focus = null;
-        focusTaskId = null;
-        void finish(task).then(() => document.querySelector<HTMLElement>("button.undo")?.focus());
-      },
-      onClose: () => {
-        focus = null;
-        focusTaskId = null;
-        el.querySelector<HTMLElement>("li.task.running button.act")?.focus();
-      },
-    });
-    focus.update(timer.snapshot());
   };
 
   const startTick = () => {
@@ -170,7 +145,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     env.feedback.acquireWakeLock();
     startTick();
     render();
-    if (config.today.autoOpenFocus) showFocus(task);
   };
 
   const finish = async (task: TaskItem) => {
@@ -225,16 +199,9 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     const done = isDoneToday(t, today);
     const running = isRunning(t.id);
     const bg = h("div", { class: "swipe-bg " + (running ? "finish" : "start"), "aria-hidden": "true" }, icon(running ? "check" : "play"));
-    let justSwiped = false;
     const body = h(
       "div",
-      {
-        class: "row-body",
-        onClick: (e) => {
-          if (justSwiped || (e.target as Element).closest("button.act")) return;
-          if (isRunning(t.id)) showFocus(t);
-        },
-      },
+      { class: "row-body" },
       h("span", { class: "dot", style: `background:${taskColor(t.id)}` }),
       h("span", { class: "name" }, t.name),
       h("span", { class: "mins" }, `${t.minutes} min`),
@@ -255,7 +222,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     );
     const li = h(
       "li",
-      { class: "task" + (done ? " done" : "") + (running ? " running" : "") + (entering.has(t.id) ? " entering" : ""), "data-id": t.id },
+      { class: "task" + (done ? " done" : "") + (running ? " running" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : ""), "data-id": t.id },
       done ? null : bg,
       body,
     );
@@ -269,7 +236,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
             li.style.setProperty("--reveal", String(Math.min(1, dx / config.today.swipeMinPx)));
           },
           onEnd: (committed) => {
-            justSwiped = committed;
             li.classList.remove("dragging");
             body.style.removeProperty("transform");
             li.style.removeProperty("--reveal");
@@ -305,7 +271,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     doneToggle.setAttribute("aria-expanded", String(doneOpen));
     doneToggle.replaceChildren(`Done (${done.length})`, icon("chevron"));
     emptyDue.hidden = due.length > 0;
-    if (focusId && !focus) el.querySelector<HTMLElement>(`[data-act="${focusId}"]`)?.focus();
+    if (focusId) el.querySelector<HTMLElement>(`[data-act="${focusId}"]`)?.focus();
   };
 
   const load = async () => {
@@ -386,7 +352,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     dispose() {
       disposed = true;
       sheet?.close();
-      closeFocus();
       stopTick();
       cancelToast?.();
       for (const d of detach) d();

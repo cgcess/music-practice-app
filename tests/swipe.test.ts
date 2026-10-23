@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config";
-import { attachDragDown, attachSwipe, isSwipeRight } from "../src/ui/swipe";
+import { attachSwipe, isSwipeRight } from "../src/ui/swipe";
 
 const ev = (type: string, x: number, y: number) => {
   const e = new Event(type, { bubbles: true });
@@ -123,64 +123,5 @@ describe("swipe", () => {
       expect(() => drag(el, 120, 0)).not.toThrow();
       expect(count()).toBe(1);
     });
-  });
-});
-
-describe("attachDragDown", () => {
-  const vd = (el: HTMLElement, dx: number, dy: number) => {
-    el.dispatchEvent(ev("pointerdown", 100, 100));
-    el.dispatchEvent(ev("pointerup", 100 + dx, 100 + dy));
-  };
-  it("closes past the threshold", () => {
-    const el = document.createElement("div");
-    let n = 0;
-    attachDragDown(el, { minPx: 100, onClose: () => n++ });
-    vd(el, 5, 150);
-    expect(n).toBe(1);
-  });
-  it("does not close below the threshold, upward, or mostly horizontal", () => {
-    const el = document.createElement("div");
-    let n = 0;
-    const ends: boolean[] = [];
-    attachDragDown(el, { minPx: 100, onClose: () => n++, onEnd: (c) => ends.push(c) });
-    vd(el, 0, 99);
-    vd(el, 0, -200);
-    vd(el, 300, 150);
-    expect(n).toBe(0);
-    expect(ends).toEqual([false, false, false]);
-  });
-  it("pointercancel springs back without closing", () => {
-    const el = document.createElement("div");
-    let n = 0;
-    const ends: boolean[] = [];
-    attachDragDown(el, { minPx: 100, onClose: () => n++, onEnd: (c) => ends.push(c) });
-    el.dispatchEvent(ev("pointerdown", 0, 0));
-    el.dispatchEvent(ev("pointercancel", 0, 0));
-    el.dispatchEvent(ev("pointerup", 0, 300));
-    expect(n).toBe(0);
-    expect(ends).toEqual([false]);
-  });
-  it("reports downward movement and detaches", () => {
-    const el = document.createElement("div");
-    const moves: number[] = [];
-    let n = 0;
-    const off = attachDragDown(el, { onMove: (d) => moves.push(d), onClose: () => n++ });
-    el.dispatchEvent(ev("pointerdown", 0, 0));
-    el.dispatchEvent(ev("pointermove", 0, 40));
-    el.dispatchEvent(ev("pointermove", 0, -10));
-    expect(moves).toEqual([40, 0]);
-    off();
-    vd(el, 0, 300);
-    expect(n).toBe(0);
-  });
-  it("default threshold is config.today.focusCloseMinPx", () => {
-    expect(config.today.focusCloseMinPx).toBe(120);
-    const el = document.createElement("div");
-    let n = 0;
-    attachDragDown(el, { onClose: () => n++ });
-    vd(el, 0, 119);
-    expect(n).toBe(0);
-    vd(el, 0, 120);
-    expect(n).toBe(1);
   });
 });
