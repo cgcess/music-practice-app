@@ -113,8 +113,25 @@ describe("today songs section", () => {
   it("songsPerDay 0 hides the section", async () => {
     spd = 0;
     songs = [];
-    await mount();
+    tasks[0]!.lastCompletedOn = "2026-10-23";
+    const v = await mount();
     expect(section().hidden).toBe(true);
+    const kids = Array.from(v.el.children);
+    const at = (sel: string) => kids.indexOf(v.el.querySelector(sel)!);
+    expect(at(".group.todo")).toBeGreaterThanOrEqual(0);
+    expect(at(".group.todo")).toBeLessThan(at(".group.done-group"));
+  });
+  it("Songs section sits between To-do and Done, toast last", async () => {
+    tasks[0]!.lastCompletedOn = "2026-10-23";
+    const v = await mount();
+    const kids = Array.from(v.el.children);
+    const at = (sel: string) => kids.indexOf(v.el.querySelector(sel)!);
+    expect(v.el.querySelector(".group.done-group")!.hasAttribute("hidden")).toBe(false);
+    expect(at(".group.todo")).toBeGreaterThanOrEqual(0);
+    expect(at(".group.todo")).toBeLessThan(at(".group.songs"));
+    expect(at(".group.songs")).toBeLessThan(at(".group.done-group"));
+    expect(at(".group.done-group")).toBeLessThan(at(".toast"));
+    expect(at(".toast")).toBe(kids.length - 1);
   });
   it("an empty selection reads as nothing to play", async () => {
     songs = [];

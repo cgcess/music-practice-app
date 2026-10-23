@@ -102,8 +102,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), editToggle, addBtn), dateEl, summaryEl, metronome.el),
     emptyDue,
     todoGroup,
-    doneGroup,
     songSection,
+    doneGroup,
     toast,
   );
   el.style.setProperty("--move-ms", `${config.today.moveMs}ms`);

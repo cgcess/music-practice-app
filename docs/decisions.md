@@ -71,3 +71,6 @@ Open-row close: a pointerdown on another unrated song row does not close the ope
 Add-time rule (first-day rule, user decision 2026-10-23): if every existing song was created today (local date), a new song is due today while fewer than `songsPerDay` songs are already due today; otherwise it uses `newSong(..., {minOffset: 1})`, due tomorrow or later, so it cannot displace a shown song. Single and bulk adds behave the same. On that first day only, a song may be added after Today already showed one; from the next day the selection is fixed once non-empty.
 Rejected: a view-side due override (Repertoire cannot see the selection), persisted ids (schema bump), always-visible buttons, a rating sheet.
 Manual check pending on a real iPhone: touch swipe feel (pointer capture, click swallowed after a drag) and VoiceOver on the row and rating buttons.
+
+## 2026-10-23 t015-songs-above-done: Songs section moved above Done on Today
+Order is now header, empty-due, To-do, Songs, Done, toast (swap of two children in `todayView`). Layout only: hidden Songs still uses `hidden`, so the rest is unchanged. DOM order rather than CSS `order`, to keep reading and focus order aligned.
