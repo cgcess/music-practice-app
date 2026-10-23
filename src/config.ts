@@ -72,6 +72,10 @@ export const config = {
     springMs: 250,
     /** Add-task sheet slide/fade. */
     sheetMs: 250,
+    /** Fallback removal of the leaving-toast ghost if animationend never fires. */
+    toastLeaveMs: 400,
+    /** Horizontal movement before a swipe captures the pointer so the row follows the finger, in px. */
+    capturePx: 10,
   },
 };
 

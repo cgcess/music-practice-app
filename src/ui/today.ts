@@ -1,5 +1,4 @@
 import { config } from "../config";
-import { createStrengthBar } from "./strengthBar";
 import { todayLocal } from "../dates";
 import { isDoneToday, isDueToday } from "../today/due";
 import { dayProgress } from "../today/progress";
@@ -12,6 +11,7 @@ import { browserMetronomeEnv, createMetronomePanel, type MetronomeEnv } from "./
 import { icon } from "./icons";
 import type { SongRating, SongSnapshot, TaskItem, TaskSnapshot, TimerPrefs, TodayPort, TodaySong } from "./ports";
 import { openSheet, type Sheet } from "./sheet";
+import { createStrengthBar } from "./strengthBar";
 import { attachSwipe } from "./swipe";
 import { attachSwipeReveal } from "./swipeReveal";
 
@@ -242,7 +242,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       const ghost = h("div", { class: "toast-leaving", "aria-hidden": "true", inert: true }, text);
       const remove = () => ghost.remove();
       ghost.addEventListener("animationend", remove);
-      setTimeout(remove, 400);
+      setTimeout(remove, config.today.toastLeaveMs);
       el.appendChild(ghost);
     }
   };
@@ -378,7 +378,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const renderHeader = () => {
     const now = new Date(env.now());
     const today = todayLocal(now);
-    const prog = dayProgress({ tasks, songs, songsPerDay, songsLoaded, now, today });
+    const prog = dayProgress({ tasks, songs, songsPerDay, songsLoaded: songsLoaded && tasksLoaded, now, today });
     el.style.setProperty("--p", String(prog.state === "done" ? 1 : prog.fraction));
     el.classList.toggle("state-rest", prog.state === "rest");
     el.classList.toggle("state-partial", prog.state === "partial");
@@ -502,6 +502,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     const s = songs.find((x) => x.id === id);
     if (!s || s.ratedToday) return;
     releaseAnim();
+    const hadRateFocus = !!(document.activeElement as HTMLElement | null)?.closest?.(".rate");
     let snap: SongSnapshot;
     try {
       snap = await env.port.rateTodaySong(id, rating);
@@ -520,6 +521,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     // One toast: this replaces a pending task toast (and its Undo button).
     showToast(`Rated ${s.title} ${rating}`, () => void undoRating(id, snap));
     renderSongs();
+    // The focused rate button was just replaced; keep keyboard users in place by moving to Undo.
+    if (hadRateFocus) el.querySelector<HTMLElement>(".toast .undo")?.focus();
   };
 
   const undoRating = async (id: string, snap: SongSnapshot) => {

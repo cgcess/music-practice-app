@@ -14,9 +14,6 @@ export function isSwipeRight(dx: number, dy: number, minPx: number, ratio: numbe
   return dx >= minPx && Math.abs(dx) > ratio * Math.abs(dy);
 }
 
-/** Horizontal movement before the pointer is captured so the row follows the finger. */
-const CAPTURE_PX = 10;
-
 /** Pointer-based swipe-right detection. Returns a detach function. */
 export function attachSwipe(el: HTMLElement, onSwipe: () => void, opts: SwipeOpts = {}): () => void {
   const minPx = opts.minPx ?? config.today.swipeMinPx;
@@ -43,7 +40,7 @@ export function attachSwipe(el: HTMLElement, onSwipe: () => void, opts: SwipeOpt
     const dy = p.clientY - s.y;
     const horizontal = Math.abs(dx) > Math.abs(dy);
     // Capture only once the drag is clearly horizontal, so taps on inner buttons still click.
-    if (!s.captured && horizontal && Math.abs(dx) > CAPTURE_PX && s.id !== null && typeof el.setPointerCapture === "function") {
+    if (!s.captured && horizontal && Math.abs(dx) > config.today.capturePx && s.id !== null && typeof el.setPointerCapture === "function") {
       try {
         el.setPointerCapture(s.id);
         s.captured = true;

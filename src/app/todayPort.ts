@@ -3,8 +3,8 @@ import type { Config } from "../config";
 import { todayLocal } from "../dates";
 import type { Settings, Task } from "../data/schema";
 import { dailySelection, rateSong } from "../sr/scheduler";
-import { topUpToday } from "./topUp";
 import { strengthCounts } from "../sr/strength";
+import { topUpToday } from "./topUp";
 import type { TodayPort } from "../ui/ports";
 
 export interface PortDeps {

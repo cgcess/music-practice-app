@@ -5,7 +5,6 @@ import { makeRepertoirePort } from "../src/app/repertoirePort";
 import { config, getEffectiveConfig } from "../src/config";
 import { Store } from "../src/data/store";
 import { dueText } from "../src/sr/dueText";
-import { makeTodayPort } from "../src/app/todayPort";
 import { settings, song } from "./helpers";
 
 let n = 0;
@@ -101,6 +100,33 @@ describe("repertoirePort", () => {
       expect(await makeRepertoirePort(store, deps()).getSongsPerDay()).toBe(7);
       expect(await store.getSettings()).toMatchObject({ suggestionPeriod: "weekly", timerSound: false, metronomeBpm: 80, songsPerDay: 7 });
     });
+  });
+});
+
+describe("repertoirePort bulk add partial failure (t019)", () => {
+  const failing = (store: Store, failOn: number) => {
+    let puts = 0;
+    return {
+      ...store,
+      getSettings: () => store.getSettings(),
+      listSongs: () => store.listSongs(),
+      getSong: (id: string) => store.getSong(id),
+      putSong: async (s: Parameters<Store["putSong"]>[0]) => {
+        if (++puts === failOn) throw new Error("disk full");
+        return store.putSong(s);
+      },
+    } as unknown as Store;
+  };
+  it("a failure after the first write reports the partial result", async () => {
+    const { store } = setup();
+    const res = await makeRepertoirePort(failing(store, 2), deps()).addSongs(["A", "B", "C"]);
+    expect(res).toEqual({ added: 1, skipped: 0, error: "disk full" });
+    expect((await store.listSongs()).map((s) => s.title)).toEqual(["A"]);
+  });
+  it("a failure on the first write still throws; success has no error key", async () => {
+    const { store, port } = setup();
+    await expect(makeRepertoirePort(failing(store, 1), deps()).addSongs(["A"])).rejects.toThrow("disk full");
+    expect(await port.addSongs(["X", "Y"])).toEqual({ added: 2, skipped: 0 });
   });
 });
 
@@ -246,8 +272,26 @@ describe("repertoirePort add-time due rule (t014)", () => {
           await store.putSong({ ...(await store.getSong("b"))!, lastReviewed: DAY, dueDate: "2026-10-30" });
         },
       });
-      await makeRepertoirePort(wrapped as unknown as Store, deps()).listSongs();
+      const listed = await makeRepertoirePort(wrapped as unknown as Store, deps()).listSongs();
       expect((await store.getSong("b"))!.dueDate).toBe("2026-10-30");
+      // The list shows the fresh record, not the stale pulled-ahead guess.
+      expect(listed.find((s) => s.id === "b")!.dueDate).toBe("2026-10-30");
+    });
+
+    it("a song deleted between the read and the write is absent from the list", async () => {
+      const { store } = setup();
+      await seed(store);
+      let done = false;
+      const { wrapped } = counting(store, {
+        onList: async () => {
+          if (done) return;
+          done = true;
+          await store.deleteSong("b");
+        },
+      });
+      const listed = await makeRepertoirePort(wrapped as unknown as Store, deps()).listSongs();
+      expect(listed.map((s) => s.id)).not.toContain("b");
+      expect(await store.getSong("b")).toBeUndefined();
     });
   });
 });

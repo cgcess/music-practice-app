@@ -90,7 +90,13 @@ export function makeRepertoirePort(
           continue;
         }
         seen.add(key(t));
-        await store.putSong(make(t));
+        try {
+          await store.putSong(make(t));
+        } catch (e) {
+          // Earlier songs are already persisted: report the partial result instead of hiding it behind a throw.
+          if (added === 0) throw e;
+          return { added, skipped, error: e instanceof Error ? e.message : "Could not add songs" };
+        }
         added++;
       }
       return { added, skipped };

@@ -27,15 +27,23 @@ export async function topUpToday(
     // must not break the view: fall back to the re-listed store.
     try {
       const written = new Map<string, Song>();
+      const removed = new Set<string>();
       for (const s of pulled) {
         // Re-read just before writing so a concurrent rename or rating is not overwritten with a stale record.
         const fresh = await store.getSong(s.id);
-        if (!fresh || fresh.lastReviewed === day || fresh.dueDate <= day) continue;
+        if (!fresh) {
+          removed.add(s.id);
+          continue;
+        }
+        if (fresh.lastReviewed === day || fresh.dueDate <= day) {
+          written.set(s.id, fresh);
+          continue;
+        }
         const next = { ...fresh, dueDate: day };
         await store.putSong(next);
         written.set(s.id, next);
       }
-      songs = songs.map((s) => written.get(s.id) ?? s);
+      songs = songs.filter((s) => !removed.has(s.id)).map((s) => written.get(s.id) ?? s);
     } catch {
       songs = await store.listSongs();
     }

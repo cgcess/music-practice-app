@@ -303,6 +303,48 @@ describe("edit mode", () => {
   });
 });
 
+describe("keyboard focus after rating (t019)", () => {
+  it("focus on a rate button moves to Undo; a click without focus does not steal it", async () => {
+    await mount();
+    body("a").click();
+    rateBtn("a", "ok").focus();
+    rateBtn("a", "ok").click();
+    await flush();
+    expect((document.activeElement as HTMLElement).classList.contains("undo")).toBe(true);
+    body("b").click();
+    (document.activeElement as HTMLElement).blur();
+    rateBtn("b", "ok").click();
+    await flush();
+    expect((document.activeElement as HTMLElement | null)?.classList.contains("undo")).toBeFalsy();
+  });
+});
+
+describe("header waits for tasks (t019)", () => {
+  it("does not read Day done while tasks are still loading", async () => {
+    songs.forEach((s) => (s.ratedToday = true));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const orig = port;
+    const env: TodayEnv = {
+      port: { ...orig(), listTasks: async () => (await gate, tasks.map((t) => ({ ...t, lastCompletedOn: "2026-10-23" }))) },
+      now: () => new Date(2026, 9, 23, 12, 0, 0).getTime(),
+      feedback: { prime() {}, chime() {}, acquireWakeLock() {}, releaseWakeLock() {}, dispose() {} },
+      every: () => () => {},
+      after: () => () => {},
+      onVisible: () => () => {},
+      metronome: { every: () => () => {}, onVisible: () => () => {} },
+    };
+    const v = todayView(env);
+    views.push(v);
+    document.body.replaceChildren(v.el);
+    await flush();
+    expect(hasCls("state-daydone")).toBe(false);
+    release();
+    await flush();
+    expect(hasCls("state-daydone")).toBe(true);
+  });
+});
+
 describe("styles", () => {
   it("rate buttons have a 44px minimum size and accessible names", async () => {
     const { readFileSync } = await import("node:fs");

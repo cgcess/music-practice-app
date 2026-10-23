@@ -121,6 +121,20 @@ describe("repertoire view", () => {
     expect(document.querySelector(".toast")!.textContent).toBe("Added 2, skipped 1");
     expect(document.querySelector(".sheet")).toBeNull();
   });
+  it("bulk add partial failure closes the sheet, reloads and toasts the error (t019)", async () => {
+    bulkRes = { added: 1, skipped: 0, error: "disk full" };
+    await mount();
+    await click(document.querySelector(".bulk-btn"));
+    (document.querySelector(".sheet textarea") as HTMLTextAreaElement).value = "One\nTwo";
+    songs = [...songs, { id: "new", title: "One", dueDate: "2026-10-24" }];
+    await submit(document.querySelector(".sheet form"));
+    expect(document.querySelector(".toast")!.textContent).toBe("Added 1 before an error: disk full");
+    expect(document.querySelector(".sheet")).toBeNull();
+    expect(rows().map((r) => r[0])).toContain("One");
+  });
+  it("the default (empty) port rejects deleteSong instead of faking a snapshot (t019)", async () => {
+    await expect(defaultDeps.repertoire!.deleteSong("x")).rejects.toThrow("No repertoire port");
+  });
   it("toast gets .show (slide-in), loses it when hidden; header has the static wash", async () => {
     await mount();
     expect(document.querySelector(".large-header")!.classList.contains("wash")).toBe(true);

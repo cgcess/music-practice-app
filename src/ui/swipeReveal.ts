@@ -13,9 +13,6 @@ export interface SwipeRevealOpts {
   onEnd?: () => void;
 }
 
-/** Horizontal movement before the pointer is captured so the row follows the finger. */
-const CAPTURE_PX = 10;
-
 /**
  * Swipe-to-reveal (iOS Mail style): unlike attachSwipe, nothing fires "on release" for the task;
  * the row stays open and the caller decides what open/closed means. Returns a detach function.
@@ -44,7 +41,7 @@ export function attachSwipeReveal(el: HTMLElement, opts: SwipeRevealOpts): () =>
     const dx = p.clientX - s.x;
     const dy = p.clientY - s.y;
     const horizontal = Math.abs(dx) > Math.abs(dy);
-    if (!s.captured && horizontal && Math.abs(dx) > CAPTURE_PX && s.id !== null && typeof el.setPointerCapture === "function") {
+    if (!s.captured && horizontal && Math.abs(dx) > config.today.capturePx && s.id !== null && typeof el.setPointerCapture === "function") {
       try {
         el.setPointerCapture(s.id);
         s.captured = true;

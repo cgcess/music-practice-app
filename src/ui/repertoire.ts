@@ -1,11 +1,11 @@
 import { config } from "../config";
-import { createStrengthBar } from "./strengthBar";
 import { todayLocal } from "../dates";
 import { dueText } from "../sr/dueText";
 import { h } from "./h";
 import { icon } from "./icons";
 import type { RepertoirePort, SongItem, SongSnapshot } from "./ports";
 import { openSheet, type Sheet } from "./sheet";
+import { createStrengthBar } from "./strengthBar";
 
 export interface RepertoireEnv {
   /** Local date "YYYY-MM-DD". */
@@ -188,7 +188,7 @@ export function repertoireView(
             }
             sheet?.close();
             await reload();
-            showToast(`Added ${res.added}, skipped ${res.skipped}`);
+            showToast(res.error ? `Added ${res.added} before an error: ${res.error}` : `Added ${res.added}, skipped ${res.skipped}`);
           })();
         },
       },

@@ -1,9 +1,13 @@
 import { config } from "../config";
 import { round2 } from "./scheduler";
 
-import type { StrengthCounts } from "../ui/ports";
-
-export type { StrengthCounts };
+/** Whole-repertoire split for the strength bar. `fresh` = not yet practiced. */
+export interface StrengthCounts {
+  well: number;
+  okay: number;
+  poorly: number;
+  fresh: number;
+}
 
 /** Bucket a repertoire for the strength bar. Unreviewed songs are "fresh" whatever their ease. */
 export function strengthCounts(

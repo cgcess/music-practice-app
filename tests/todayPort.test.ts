@@ -188,6 +188,24 @@ describe("todayPort songs (t014)", () => {
     expect((await port.listTodaySongs()).songs).toEqual([]);
     expect((await store.getSong("a"))!.dueDate).toBe("2026-10-30");
   });
+  it("listTodaySongs writes nothing for songsPerDay 0 or an empty repertoire", async () => {
+    for (const [spd, songs] of [[0, [fut("a", "2026-10-30")]], [3, []]] as const) {
+      const { store, d } = mkSongs();
+      await put(store, spd, ...songs);
+      let puts = 0;
+      const counted = {
+        getSettings: () => store.getSettings(),
+        listSongs: () => store.listSongs(),
+        getSong: (id: string) => store.getSong(id),
+        putSong: async (s: Parameters<Store["putSong"]>[0]) => {
+          puts++;
+          return store.putSong(s);
+        },
+      } as unknown as Store;
+      expect((await makeTodayPort(counted, d).listTodaySongs()).songs).toEqual([]);
+      expect(puts).toBe(0);
+    }
+  });
   it("an unrated shown song is still shown the next day", async () => {
     const { store, d } = mkSongs();
     await put(store, 1, fut("a", "2026-10-20"), fut("b", "2026-10-21"));

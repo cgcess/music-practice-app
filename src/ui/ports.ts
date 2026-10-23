@@ -1,4 +1,8 @@
 /** The only way views reach persisted data. Implemented outside src/ui (see src/app/todayPort.ts). */
+import type { StrengthCounts } from "../sr/strength";
+
+export type { StrengthCounts };
+
 export interface TaskItem {
   id: string;
   name: string;
@@ -26,13 +30,6 @@ export interface TodaySong {
   id: string;
   title: string;
   ratedToday: boolean;
-}
-/** Whole-repertoire split for the strength bar. `fresh` = not yet practiced. */
-export interface StrengthCounts {
-  well: number;
-  okay: number;
-  poorly: number;
-  fresh: number;
 }
 export interface TodayPort {
   listTasks(): Promise<TaskItem[]>;
@@ -73,6 +70,8 @@ export interface SongSnapshot extends SongItem {
 export interface BulkAddResult {
   added: number;
   skipped: number;
+  /** Set only when a write failed after at least one song was added; the rest were not attempted. */
+  error?: string;
 }
 export interface RepertoirePort {
   /** Songs ordered by dueDate, then title (case-insensitive), then id. */

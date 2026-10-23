@@ -99,7 +99,11 @@ describe.each(["light", "dark"] as const)("contrast (%s)", (theme) => {
     const run = (where: string, ink: RGB, stops: RGB[]) => {
       for (const bg of stops) for (const [n, pct] of Object.entries(shades)) check(`bar ${where}: ${n}`, mix(ink, bg, pct), bg, 3);
     };
-    for (const [name, stops] of Object.entries(states)) run(`today ${name}`, name === "bloom" ? solid(t("--bloom-ink")) : label, stops);
+    for (const [name, stops] of Object.entries(states)) {
+      const bloom = name === "bloom";
+      run(`today ${name}`, bloom ? solid(t("--bloom-ink")) : label, stops);
+      for (const bg of stops) check(`counts text today ${name}`, over(t(bloom ? "--bloom-ink-2" : "--head-ink-2"), bg), bg, 4.5);
+    }
     const wash = [solid(t("--rest-1")), solid(t("--rest-2"))];
     run("repertoire wash", label, wash);
     run("page", label, [page]);
