@@ -13,6 +13,7 @@ let songs: SongItem[];
 let perDay: number;
 let calls: string[];
 let afterMs: number[];
+let toastFn: (() => void) | null = null;
 let restored: SongSnapshot[];
 let bulkRes: BulkAddResult;
 let saved: number[];
@@ -36,7 +37,7 @@ const port = (): RepertoirePort => ({
   deleteSong: async () => snap,
   restoreSong: async (s) => void restored.push(s),
 });
-const env: RepertoireEnv = { today: () => "2026-10-23", after: (_fn, ms) => (afterMs.push(ms), () => {}) };
+const env: RepertoireEnv = { today: () => "2026-10-23", after: (fn, ms) => ((toastFn = fn), afterMs.push(ms), () => {}) };
 
 const mount = async () => {
   const v = repertoireView(port(), env);
@@ -116,6 +117,17 @@ describe("repertoire view", () => {
     expect(calls).toEqual([`bulk:${JSON.stringify(["One", "", "Two", "One"])}`]);
     expect(document.querySelector(".toast")!.textContent).toBe("Added 2, skipped 1");
     expect(document.querySelector(".sheet")).toBeNull();
+  });
+  it("toast gets .show (slide-in), loses it when hidden; header has the static wash", async () => {
+    await mount();
+    expect(document.querySelector(".large-header")!.classList.contains("wash")).toBe(true);
+    await click(document.querySelector(".bulk-btn"));
+    (document.querySelector(".sheet textarea") as HTMLTextAreaElement).value = "One";
+    await submit(document.querySelector(".sheet form"));
+    const toast = document.querySelector(".toast")!;
+    expect(toast.classList.contains("show")).toBe(true);
+    toastFn!();
+    expect(toast.classList.contains("show")).toBe(false);
   });
   it("renames via the edit sheet", async () => {
     await mount();

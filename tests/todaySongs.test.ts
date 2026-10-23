@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { formatSummary } from "../src/today/summary";
 import { config } from "../src/config";
 import type { SongRating, SongSnapshot, TodayPort, TodaySong } from "../src/ui/ports";
 import { todayView, type TodayEnv } from "../src/ui/today";
@@ -14,6 +16,8 @@ let spd: number;
 let rated: [string, SongRating][];
 let restored: SongSnapshot[];
 let rateError: Error | null;
+let songGate: Promise<void> | null = null;
+let songFail = false;
 let afterMs: number[];
 let toastFn: (() => void) | null;
 let views: { dispose: () => void }[] = [];
@@ -31,7 +35,11 @@ const port = (): TodayPort => ({
   getTimerPrefs: async () => ({ sound: false, vibrate: false, overtime: true }),
   getTempo: async () => 100,
   setTempo: async () => {},
-  listTodaySongs: async () => ({ songsPerDay: spd, songs: songs.map((s) => ({ ...s })) }),
+  listTodaySongs: async () => {
+    if (songGate) await songGate;
+    if (songFail) throw new Error("songs unavailable");
+    return { songsPerDay: spd, songs: songs.map((s) => ({ ...s })) };
+  },
   rateTodaySong: async (id, r) => {
     if (rateError) throw rateError;
     rated.push([id, r]);
@@ -91,11 +99,15 @@ beforeEach(() => {
   rated = [];
   restored = [];
   rateError = null;
+  songGate = null;
+  songFail = false;
   afterMs = [];
   toastFn = null;
   tasks = [{ id: "t1", name: "Scales", minutes: 5, days: "daily", lastCompletedOn: null }];
 });
 afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   for (const v of views) v.dispose();
   views = [];
   document.body.replaceChildren();
@@ -296,5 +308,237 @@ describe("styles", () => {
     expect(rule).toContain("min-height: 44px");
     await mount();
     for (const r of ["rough", "ok", "solid"]) expect(rateBtn("a", r).getAttribute("aria-label")).toMatch(/^Rate Autumn /);
+  });
+});
+
+const todayEl = () => document.querySelector(".today") as HTMLElement;
+const hasCls = (c: string) => todayEl().classList.contains(c);
+const summaryText = () => document.querySelector(".summary")!.textContent;
+const taskAct = (id = "t1") => document.querySelector(`li.task[data-id="${id}"] button.act`) as HTMLButtonElement;
+const finishTask = async (id = "t1") => {
+  taskAct(id).click();
+  taskAct(id).click();
+  await flush();
+};
+const rate = async (id: string, r = "ok") => {
+  body(id).click();
+  rateBtn(id, r).click();
+  await flush();
+};
+const reduceMotion = () => vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), media: q }));
+
+describe("today header progress (t017)", () => {
+  it("rest: nothing due keeps the pale state with no bloom", async () => {
+    tasks = [];
+    songs = [];
+    spd = 0;
+    await mount();
+    expect(hasCls("state-rest")).toBe(true);
+    expect(hasCls("state-daydone")).toBe(false);
+    expect(todayEl().style.getPropertyValue("--p")).toBe("0");
+    expect(summaryText()).toBe("Nothing due today");
+  });
+  it("partial then Day done, with --p following done/due over tasks and songs", async () => {
+    await mount();
+    expect(hasCls("state-partial")).toBe(true);
+    expect(todayEl().style.getPropertyValue("--p")).toBe("0");
+    await finishTask();
+    expect(Number(todayEl().style.getPropertyValue("--p"))).toBeCloseTo(1 / 3);
+    await rate("a");
+    expect(Number(todayEl().style.getPropertyValue("--p"))).toBeCloseTo(2 / 3);
+    expect(hasCls("state-daydone")).toBe(false);
+    await rate("b");
+    expect(hasCls("state-daydone")).toBe(true);
+    expect(hasCls("state-partial")).toBe(false);
+    expect(todayEl().style.getPropertyValue("--p")).toBe("1");
+    expect(summaryText()).toBe("Day done");
+  });
+  it("non-Day-done summary equals formatSummary, number in its own span", async () => {
+    await mount();
+    expect(summaryText()).toBe(formatSummary({ done: 0, due: 1, minutesLeft: 5 }));
+    expect(document.querySelector(".summary .n")!.textContent).toBe("0");
+  });
+  it("an empty songs section (none selected) still lets finished tasks complete the day", async () => {
+    songs = [];
+    tasks[0]!.lastCompletedOn = "2026-10-23";
+    await mount();
+    expect(hasCls("state-daydone")).toBe(true);
+  });
+  it("songsPerDay 0 with an unfinished task is partial", async () => {
+    spd = 0;
+    songs = [];
+    await mount();
+    expect(hasCls("state-partial")).toBe(true);
+  });
+  it("undoing the last rating or the last task leaves Day done", async () => {
+    tasks[0]!.lastCompletedOn = "2026-10-23";
+    songs[0]!.ratedToday = true;
+    await mount();
+    await rate("b");
+    expect(hasCls("state-daydone")).toBe(true);
+    (document.querySelector(".toast button.undo") as HTMLButtonElement).click();
+    await flush();
+    expect(hasCls("state-daydone")).toBe(false);
+    expect(hasCls("state-partial")).toBe(true);
+    expect(summaryText()).not.toBe("Day done");
+    await rate("b");
+    expect(hasCls("state-daydone")).toBe(true);
+  });
+  it("undoing the last task finish leaves Day done", async () => {
+    songs.forEach((x) => (x.ratedToday = true));
+    await mount();
+    await finishTask();
+    expect(hasCls("state-daydone")).toBe(true);
+    (document.querySelector(".toast button.undo") as HTMLButtonElement).click();
+    await flush();
+    expect(hasCls("state-daydone")).toBe(false);
+  });
+  it("a fresh view over completed data is not Day done until the songs load, with no pulse", async () => {
+    tasks[0]!.lastCompletedOn = "2026-10-23";
+    songs.forEach((x) => (x.ratedToday = true));
+    let release!: () => void;
+    songGate = new Promise<void>((r) => (release = r));
+    await mount();
+    expect(hasCls("state-daydone")).toBe(false);
+    expect(summaryText()).not.toBe("Day done");
+    release();
+    await flush();
+    expect(hasCls("state-daydone")).toBe(true);
+    expect(summaryText()).toBe("Day done");
+    expect(hasCls("pulse-a") || hasCls("pulse-b")).toBe(false);
+    expect(document.querySelector(".pop, .settle, .tick")).toBeNull();
+  });
+  it("a failed song load still resolves the cap", async () => {
+    tasks[0]!.lastCompletedOn = "2026-10-23";
+    songFail = true;
+    await mount();
+    expect(hasCls("state-daydone")).toBe(true);
+  });
+  it("first loaded paint is not animated; the first handler releases it", async () => {
+    await mount();
+    expect(hasCls("no-anim")).toBe(true);
+    await finishTask();
+    expect(hasCls("no-anim")).toBe(false);
+  });
+  it("no-anim is removed before pulse is added (task finish and rating)", async () => {
+    await mount();
+    const log: string[] = [];
+    const cl = todayEl().classList;
+    const add = cl.add.bind(cl);
+    const remove = cl.remove.bind(cl);
+    cl.add = (...t: string[]) => (t.forEach((x) => log.push("+" + x)), add(...t));
+    cl.remove = (...t: string[]) => (t.forEach((x) => log.push("-" + x)), remove(...t));
+    await finishTask();
+    expect(log.indexOf("-no-anim")).toBeGreaterThanOrEqual(0);
+    expect(log.indexOf("-no-anim")).toBeLessThan(log.findIndex((x) => x.startsWith("+pulse-")));
+    todayEl().classList.add("no-anim");
+    log.length = 0;
+    await rate("a");
+    expect(log.indexOf("-no-anim")).toBeLessThan(log.findIndex((x) => x.startsWith("+pulse-")));
+  });
+});
+
+describe("per-item touch hooks (t017)", () => {
+  it("finishing a task pops the Done row status, ticks the number and pulses; a later render drops pop", async () => {
+    await mount();
+    await finishTask();
+    const status = document.querySelector("li.task.done .status")!;
+    expect(status.classList.contains("pop")).toBe(true);
+    expect(document.querySelector(".summary .n")!.classList.contains("tick")).toBe(true);
+    expect(hasCls("pulse-a") || hasCls("pulse-b")).toBe(true);
+    (document.querySelector(".edit-toggle") as HTMLButtonElement).click(); // any render
+    expect(document.querySelector("li.task.done .status")!.classList.contains("pop")).toBe(false);
+  });
+  it("finishing by swipe pops too", async () => {
+    await mount();
+    const rowEl = document.querySelector('li.task[data-id="t1"]')!;
+    swipe(rowEl, 120, 5);
+    swipe(document.querySelector('li.task[data-id="t1"]')!, 120, 5);
+    await flush();
+    expect(document.querySelector("li.task.done .status")!.classList.contains("pop")).toBe(true);
+  });
+  it("rating pops the status, settles the row and pulses", async () => {
+    await mount();
+    await rate("a");
+    expect(li("a").classList.contains("settle")).toBe(true);
+    expect(document.querySelector('li[data-song="a"] .status')!.classList.contains("pop")).toBe(true);
+    expect(hasCls("pulse-a")).toBe(true);
+    expect(li("b").classList.contains("settle")).toBe(false);
+    expect(todayEl().dataset.pulse).toBe("1");
+  });
+  it("pulse restarts by alternating class names, and survives a later render", async () => {
+    await mount();
+    await rate("a");
+    expect(hasCls("pulse-a")).toBe(true);
+    (document.querySelector(".edit-toggle") as HTMLButtonElement).click(); // render between pulse and its next change
+    expect(hasCls("pulse-a")).toBe(true);
+    (document.querySelector(".edit-toggle") as HTMLButtonElement).click();
+    await rate("b");
+    expect(hasCls("pulse-b")).toBe(true);
+    expect(hasCls("pulse-a")).toBe(false);
+    expect(todayEl().dataset.pulse).toBe("2");
+  });
+  it("a second render has no pop or settle", async () => {
+    await mount();
+    await rate("a");
+    (document.querySelector(".edit-toggle") as HTMLButtonElement).click();
+    expect(document.querySelector(".pop, .settle")).toBeNull();
+  });
+  it("adds none of the touch hooks under reduced motion", async () => {
+    reduceMotion();
+    await mount();
+    await finishTask();
+    await rate("a");
+    expect(document.querySelector(".pop, .settle, .tick, .entering")).toBeNull();
+    expect(hasCls("pulse-a") || hasCls("pulse-b")).toBe(false);
+    expect(hasCls("no-anim")).toBe(false);
+  });
+});
+
+describe("today toast motion (t017)", () => {
+  it("slides in with .show; on hide the live toast empties and a text clone leaves", async () => {
+    vi.useFakeTimers();
+    await mount();
+    await rate("a");
+    const toast = document.querySelector(".toast")!;
+    expect(toast.classList.contains("show")).toBe(true);
+    toastFn!();
+    expect(toast.textContent).toBe("");
+    expect(toast.classList.contains("show")).toBe(false);
+    const ghost = document.querySelector(".toast-leaving")!;
+    expect(ghost.textContent).toContain("Rated Autumn ok");
+    expect(ghost.hasAttribute("inert")).toBe(true);
+    expect(ghost.getAttribute("aria-hidden")).toBe("true");
+    expect(ghost.classList.contains("toast")).toBe(false);
+    expect(ghost.querySelector("button")).toBeNull();
+    vi.advanceTimersByTime(401);
+    expect(document.querySelector(".toast-leaving")).toBeNull();
+  });
+  it("the clone is removed on animationend too", async () => {
+    await mount();
+    await rate("a");
+    toastFn!();
+    document.querySelector(".toast-leaving")!.dispatchEvent(new Event("animationend"));
+    expect(document.querySelector(".toast-leaving")).toBeNull();
+  });
+  it("no leave clone under reduced motion", async () => {
+    reduceMotion();
+    await mount();
+    await rate("a");
+    toastFn!();
+    expect(document.querySelector(".toast-leaving")).toBeNull();
+  });
+});
+
+describe("source hygiene (t017)", () => {
+  const ui = ["today.ts", "repertoire.ts"].map((f) => readFileSync(`src/ui/${f}`, "utf8"));
+  it("today.ts touches the root classes via classList only", () => {
+    expect(ui[0]).not.toMatch(/\.className\s*=/);
+  });
+  it("no innerHTML and no data imports in the view code", () => {
+    for (const src of ui) {
+      expect(src).not.toMatch(/innerHTML/);
+      expect(src).not.toMatch(/from "\.\.\/data/);
+    }
   });
 });

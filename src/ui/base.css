@@ -17,14 +17,29 @@
   --success: #34c759;
   --warning: #ff9500;
   --danger: #ff3b30;
-  --task-1: #ff2d55;
-  --task-2: #007aff;
-  --task-3: #32ade6;
-  --task-4: #af52de;
-  --task-5: #a2845e;
-  --task-6: #00b8ad;
-  --task-7: #d9a400;
-  --task-8: #ff6482;
+  --success-text: #1f7a34;
+  --warning-text: #a35200;
+  --success-fill: #1f7a34;
+  --on-success: #ffffff;
+  --accent-text: #5856d6;
+  --toast-bg: #1c1c1e;
+  --toast-ink: #ffffff;
+  --toast-undo: #a9a8ff;
+  /* Header gradient (hue 285, intensity 1). sRGB hex of the oklch source in the comment, so tests can read it. */
+  --rest-1: #ebecff; /* oklch(0.95 0.035 285) */
+  --rest-2: #ecf6ff; /* oklch(0.97 0.02 255) */
+  --full-1: #cac9ff; /* oklch(0.86 0.09 285) */
+  --full-2: #c1e2ff; /* oklch(0.90 0.06 250) */
+  --bloom-1: #5437c0; /* oklch(0.46 0.20 285) */
+  --bloom-2: #005db8; /* oklch(0.48 0.17 250) */
+  --bloom-3: #82439d; /* oklch(0.50 0.15 315) */
+  --bloom-ink: #ffffff;
+  --bloom-ink-2: rgba(255, 255, 255, 0.92);
+  --bloom-tint: rgba(255, 255, 255, 0.22);
+  --head-ink-2: rgba(28, 28, 40, 0.78);
+  --head-accent: #3b39a8;
+  --head-tint: rgba(88, 86, 214, 0.14);
+  --glow: rgba(255, 255, 255, 0.75);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -44,6 +59,8 @@
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --tabbar-h: 49px;
   --font: -apple-system, system-ui, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", var(--font);
+  --spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.108 26%, 1.1, 1.077 30.6%, 0.998 38.7%, 0.976 42.7%, 0.971 45.1%, 0.973 47.5%, 0.993 56.7%, 1.002 63.6%, 1.003 71.8%, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,15 +80,27 @@
     --success: #30d158;
     --warning: #ff9f0a;
     --danger: #ff453a;
-    --task-1: #ff375f;
-    --task-2: #0a84ff;
-    --task-3: #64d2ff;
-    --task-4: #bf5af2;
-    --task-5: #ac8e68;
-    --task-6: #63e6e2;
-    --task-7: #ffd60a;
-    --task-8: #ff6482;
-  }
+    --success-text: #30d158;
+    --warning-text: #ff9f0a;
+    --success-fill: #30d158;
+    --on-success: #000000;
+    --accent-text: #b9b8ff;
+    --toast-bg: #f2f2f7;
+    --toast-ink: #000000;
+    --toast-undo: #4b49c9;
+    --rest-1: #1d1c34; /* oklch(0.24 0.045 285) */
+    --rest-2: #0a1421; /* oklch(0.19 0.03 255) */
+    --full-1: #433889; /* oklch(0.40 0.13 285) */
+    --full-2: #003969; /* oklch(0.34 0.10 250) */
+    --bloom-1: #543bbb; /* oklch(0.46 0.19 285) */
+    --bloom-2: #004c9f; /* oklch(0.42 0.16 250) */
+    --bloom-3: #763790; /* oklch(0.46 0.15 315) */
+    --bloom-ink-2: rgba(255, 255, 255, 0.88);
+    --head-ink-2: rgba(235, 235, 245, 0.78);
+    --head-accent: #b9b8ff;
+    --head-tint: rgba(185, 184, 255, 0.18);
+    --glow: rgba(151, 147, 230, 0.55); /* oklch(0.70 0.12 285 / 0.55) */
+                  }
 }
 
 /* Reset */
@@ -139,7 +168,9 @@ footer {
 
 /* Large title header */
 .large-header { padding: var(--space-4) var(--space-1) var(--space-2); }
-.large-title { margin: 0; font-size: var(--fs-largetitle); font-weight: 700; letter-spacing: 0.37px; line-height: 1.15; }
+.large-title { margin: 0; font-family: var(--font-rounded); font-size: var(--fs-largetitle); font-weight: 700; letter-spacing: 0.37px; line-height: 1.15; }
+
+.large-header.wash { background: radial-gradient(120% 90% at 15% 0%, var(--rest-1), transparent 70%), radial-gradient(90% 80% at 95% 15%, var(--rest-2), transparent 70%); border-radius: var(--radius-lg); }
 
 /* Empty-state card and inset grouped list */
 .empty-card {
@@ -167,12 +198,34 @@ footer {
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
-  background: var(--label);
-  color: var(--bg);
+  background: var(--toast-bg);
+  color: var(--toast-ink);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 420ms var(--spring), opacity 200ms var(--ease);
 }
+@starting-style { .toast.show { transform: translateY(140%); opacity: 0; } }
 .toast:empty { display: none; }
-.toast button.undo { background: none; border: 0; padding: var(--space-2); min-height: 44px; color: var(--task-3); font-weight: 600; }
+.toast button.undo { background: none; border: 0; padding: var(--space-2); min-height: 44px; color: var(--toast-undo); font-weight: 600; }
+/* Leave clone: a separate rule on purpose (not grouped with .toast); it repeats the layout since it has no .toast class. */
+.toast-leaving {
+  position: fixed;
+  left: var(--space-4);
+  right: var(--space-4);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--space-3));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--toast-bg);
+  color: var(--toast-ink);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  animation: toast-out 300ms var(--ease) forwards;
+}
+@keyframes toast-out { to { transform: translateY(140%); opacity: 0; } }
 
 /* Bottom sheet */
 .sheet-backdrop {
@@ -196,7 +249,7 @@ footer {
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
   animation: slide-up var(--sheet-ms, 250ms) var(--ease);
 }
-.sheet h2 { margin: 0 0 var(--space-3); font-size: var(--fs-title); text-align: center; }
+.sheet h2 { margin: 0 0 var(--space-3); font-family: var(--font-rounded); font-size: var(--fs-title); text-align: center; }
 .sheet input[type="text"], .sheet input[type="number"] {
   width: 100%;
   min-height: 44px;

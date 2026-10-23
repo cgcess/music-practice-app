@@ -48,7 +48,7 @@ export function repertoireView(
     { class: "repertoire" },
     h(
       "header",
-      { class: "large-header" },
+      { class: "large-header wash" },
       h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Repertoire"), h("div", { class: "title-actions" }, bulkBtn, addBtn)),
       stepper,
     ),
@@ -60,6 +60,7 @@ export function repertoireView(
   const hideToast = () => {
     cancelToast?.();
     cancelToast = null;
+    toast.classList.remove("show");
     toast.replaceChildren();
   };
   const showToast = (text: string, onUndo?: () => void) => {
@@ -67,6 +68,7 @@ export function repertoireView(
     const kids = [h("span", null, onUndo ? `${text} · ` : text)];
     if (onUndo) kids.push(h("button", { type: "button", class: "undo", onClick: onUndo }, "Undo"));
     toast.replaceChildren(...kids);
+    toast.classList.add("show");
     cancelToast = env.after(hideToast, config.today.undoMs);
   };
 

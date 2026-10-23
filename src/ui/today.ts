@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { todayLocal } from "../dates";
 import { isDoneToday, isDueToday } from "../today/due";
+import { dayProgress } from "../today/progress";
 import { formatDate, formatSummary, summarize } from "../today/summary";
 import { TimerController, formatOvertime, formatRemaining } from "../today/timer";
 import { applyUndo, prepareUndo, type Undo } from "../today/undo";
@@ -12,7 +13,6 @@ import type { SongRating, SongSnapshot, TaskItem, TaskSnapshot, TimerPrefs, Toda
 import { openSheet, type Sheet } from "./sheet";
 import { attachSwipe } from "./swipe";
 import { attachSwipeReveal } from "./swipeReveal";
-import { taskColor } from "./taskColor";
 
 export interface TodayEnv {
   port: TodayPort;
@@ -64,6 +64,10 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const songRatings = new Map<string, SongRating>();
   let openSong: string | null = null;
   let songRowDetach: (() => void)[] = [];
+  let tasksLoaded = false;
+  let songsLoaded = false;
+  let lastDone: number | null = null;
+  let pulseSeq = 0;
 
   const timer = new TimerController({
     now: env.now,
@@ -74,12 +78,16 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
 
   const reduceMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const entering = new Set<string>();
+  /** Ids whose next rendered row gets the `pop` touch; consumed by render()/renderSongs() like `entering`. */
+  const popTasks = new Set<string>();
+  const popSongs = new Set<string>();
   let doneOpen = true;
   let sheet: Sheet | null = null;
 
   const todoList = h("ul", { class: "task-list inset-list" });
   const doneList = h("ul", { class: "task-list inset-list" });
   const toast = h("div", { class: "toast", role: "status" });
+  const hero = h("div", { class: "hero", "aria-hidden": "true" }, h("div", { class: "layer prog" }), h("div", { class: "layer bloom" }), h("div", { class: "layer glow" }));
   const errorEl = h("p", { class: "error", role: "alert" });
   const dateEl = h("p", { class: "date" });
   const summaryEl = h("p", { class: "summary" });
@@ -98,7 +106,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   songSection.hidden = true;
   const el = h(
     "section",
-    { class: "today" },
+    { class: "today no-anim state-rest" },
+    hero,
     h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), editToggle, addBtn), dateEl, summaryEl, metronome.el),
     emptyDue,
     todoGroup,
@@ -109,6 +118,24 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   el.style.setProperty("--move-ms", `${config.today.moveMs}ms`);
   el.style.setProperty("--spring-ms", `${config.today.springMs}ms`);
   const detach: (() => void)[] = [];
+
+  /** Drops the first-paint suppression; called synchronously by every handler that changes progress. */
+  const releaseAnim = () => el.classList.remove("no-anim");
+  /** Restarts the header glow: two identical keyframes under different names, used alternately. */
+  const pulse = () => {
+    if (reduceMotion()) return;
+    const next = el.classList.contains("pulse-a") ? "pulse-b" : "pulse-a";
+    el.classList.remove("pulse-a", "pulse-b");
+    el.dataset.pulse = String(++pulseSeq);
+    el.classList.add(next);
+  };
+  const afterFrames = (fn: () => void) => {
+    if (typeof requestAnimationFrame !== "function") return fn();
+    requestAnimationFrame(() => requestAnimationFrame(fn));
+  };
+  const loadSettled = () => {
+    if (tasksLoaded && songsLoaded) afterFrames(() => !disposed && releaseAnim());
+  };
   let rowDetach: (() => void)[] = [];
 
   const toggleDone = () => {
@@ -177,6 +204,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   };
 
   const finish = async (task: TaskItem) => {
+    releaseAnim();
     timer.done();
     stopTick();
     env.feedback.releaseWakeLock();
@@ -190,7 +218,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       return;
     }
     task.lastCompletedOn = date;
-    if (!reduceMotion()) entering.add(task.id);
+    if (!reduceMotion()) {
+      entering.add(task.id);
+      popTasks.add(task.id);
+    }
+    pulse();
     undo = prepareUndo(task.id, prev, env.now());
     showToast("Done", () => void doUndo());
     render();
@@ -200,7 +232,17 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     cancelToast?.();
     cancelToast = null;
     undo = null;
+    const text = toast.textContent ?? "";
+    toast.classList.remove("show");
     toast.replaceChildren();
+    if (text && !reduceMotion()) {
+      // The live toast empties at once (it is `display: none` when empty); a text-only clone plays the slide-out.
+      const ghost = h("div", { class: "toast-leaving", "aria-hidden": "true", inert: true }, text);
+      const remove = () => ghost.remove();
+      ghost.addEventListener("animationend", remove);
+      setTimeout(remove, 400);
+      el.appendChild(ghost);
+    }
   };
 
   /** One toast element: a new toast replaces the previous one (and its Undo). */
@@ -209,12 +251,14 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     const kids = [h("span", null, onUndo ? `${msg} · ` : msg)];
     if (onUndo) kids.push(h("button", { type: "button", class: "undo", onClick: onUndo }, "Undo"));
     toast.replaceChildren(...kids);
+    toast.classList.add("show");
     cancelToast = env.after(hideToast, config.today.undoMs);
   };
 
   const doUndo = async () => {
     const u = undo;
     if (!u) return;
+    releaseAnim();
     const res = applyUndo(u, env.now(), config.today.undoMs);
     hideToast();
     if (!res) return;
@@ -230,7 +274,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     const running = isRunning(t.id);
     const cls = "task" + (done ? " done" : "") + (running ? " running" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : "") + (editMode ? " editing" : "");
     const common = [
-      h("span", { class: "dot", style: `background:${taskColor(t.id)}` }),
       h("span", { class: "name" }, t.name),
       h("span", { class: "mins" }, `${t.minutes} min`),
       h("span", { class: "time", "data-id": t.id }, running ? timeText() : ""),
@@ -255,7 +298,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
           },
         },
         ...common,
-        done ? h("span", { class: "status" }, "✓ done") : null,
+        done ? h("span", { class: "status" + (popTasks.has(t.id) ? " pop" : "") }, "✓ done") : null,
         h("span", { class: "chev" }, icon("chevron")),
       );
       return h("li", { class: cls, "data-id": t.id }, body);
@@ -266,7 +309,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       { class: "row-body" },
       ...common,
       done
-        ? h("span", { class: "status" }, "✓ done")
+        ? h("span", { class: "status" + (popTasks.has(t.id) ? " pop" : "") }, "✓ done")
         : h(
             "button",
             {
@@ -311,12 +354,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     const due = tasks.filter((t) => isDueToday(t, now));
     const todo = due.filter((t) => !isDoneToday(t, today));
     const done = due.filter((t) => isDoneToday(t, today));
-    const sum = summarize(due, today);
     dateEl.textContent = formatDate(now);
-    summaryEl.textContent = formatSummary(sum);
     todoList.replaceChildren(...todo.map((t) => makeRow(t, today)));
     doneList.replaceChildren(...done.map((t) => makeRow(t, today)));
     entering.clear();
+    popTasks.clear();
     todoGroup.hidden = due.length === 0;
     todoList.hidden = todo.length === 0;
     todoEmpty.hidden = todo.length > 0;
@@ -330,6 +372,34 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     renderSongs();
   };
 
+  /** Gradient depth, state classes and summary, all derived from the same data as the lists (so a reload is correct). */
+  const renderHeader = () => {
+    const now = new Date(env.now());
+    const today = todayLocal(now);
+    const prog = dayProgress({ tasks, songs, songsPerDay, songsLoaded, now, today });
+    el.style.setProperty("--p", String(prog.state === "done" ? 1 : prog.fraction));
+    el.classList.toggle("state-rest", prog.state === "rest");
+    el.classList.toggle("state-partial", prog.state === "partial");
+    el.classList.toggle("state-daydone", prog.state === "done");
+    const sum = summarize(
+      tasks.filter((t) => isDueToday(t, now)),
+      today,
+    );
+    if (prog.state === "done") {
+      summaryEl.textContent = "Day done";
+    } else {
+      const text = formatSummary(sum);
+      if (sum.due > 0) {
+        const n = String(sum.done);
+        const tick = lastDone !== null && lastDone !== sum.done && !reduceMotion();
+        summaryEl.replaceChildren(h("span", { class: "n" + (tick ? " tick" : "") }, n), text.slice(n.length));
+      } else {
+        summaryEl.textContent = text;
+      }
+    }
+    lastDone = sum.done;
+  };
+
   const setOpenSong = (id: string | null) => {
     if (openSong === id) return;
     openSong = id;
@@ -340,7 +410,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     const interactive = !s.ratedToday && !editMode;
     const open = interactive && openSong === s.id;
     const label = songRatings.get(s.id) ?? "Rated";
-    const cls = "song" + (s.ratedToday ? " rated" : "") + (open ? " open" : "") + (editMode ? " editing" : "");
+    const popped = popSongs.has(s.id);
+    const cls = "song" + (s.ratedToday ? " rated" : "") + (popped ? " settle" : "") + (open ? " open" : "") + (editMode ? " editing" : "");
     const toggle = () => setOpenSong(openSong === s.id ? null : s.id);
     const bodyAttrs = interactive
       ? {
@@ -361,7 +432,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       : s.ratedToday
         ? { class: "row-body", role: "button", "aria-disabled": "true" }
         : { class: "row-body" };
-    const body = h("div", bodyAttrs, h("span", { class: "name" }, s.title), s.ratedToday ? h("span", { class: "status" }, label) : null);
+    const body = h("div", bodyAttrs, h("span", { class: "name" }, s.title), s.ratedToday ? h("span", { class: "status" + (popped ? " pop" : "") }, label) : null);
     if (!interactive) return h("li", { class: cls, "data-song": s.id }, body);
     const actions = h(
       "div",
@@ -402,6 +473,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     songDone.hidden = !(songs.length > 0 && songs.every((x) => x.ratedToday));
     songList.hidden = songs.length === 0;
     songList.replaceChildren(...songs.map(makeSongRow));
+    popSongs.clear();
+    renderHeader();
     if (focusId) el.querySelector<HTMLElement>(`[data-song-body="${focusId}"]`)?.focus();
   };
 
@@ -412,13 +485,17 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       songsPerDay = r.songsPerDay;
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Could not load songs");
+    } finally {
+      songsLoaded = true;
     }
     renderSongs();
+    loadSettled();
   };
 
   const rateSongRow = async (id: string, rating: SongRating) => {
     const s = songs.find((x) => x.id === id);
     if (!s || s.ratedToday) return;
+    releaseAnim();
     let snap: SongSnapshot;
     try {
       snap = await env.port.rateTodaySong(id, rating);
@@ -431,12 +508,15 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     songRatings.set(id, rating);
     s.ratedToday = true;
     openSong = null;
+    if (!reduceMotion()) popSongs.add(id);
+    pulse();
     // One toast: this replaces a pending task toast (and its Undo button).
     showToast(`Rated ${s.title} ${rating}`, () => void undoRating(id, snap));
     renderSongs();
   };
 
   const undoRating = async (id: string, snap: SongSnapshot) => {
+    releaseAnim();
     hideToast();
     try {
       await env.port.restoreTodaySong(snap);
@@ -464,8 +544,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       [tasks, prefs] = await Promise.all([env.port.listTasks(), env.port.getTimerPrefs()]);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Could not load tasks");
+    } finally {
+      tasksLoaded = true;
     }
     render();
+    loadSettled();
   };
 
   // Add-task sheet.

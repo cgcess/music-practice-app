@@ -5,19 +5,22 @@ const css = readFileSync("src/ui/base.css", "utf8");
 const darkStart = css.indexOf("@media (prefers-color-scheme: dark)");
 const light = css.slice(css.indexOf(":root"), darkStart);
 const dark = css.slice(darkStart, css.indexOf("/* Reset */"));
-const val = (block: string, name: string) => new RegExp(`${name}:\\s*([^;]+);`).exec(block)?.[1]?.trim();
+const val = (block: string, name: string) => new RegExp(`(?:^|[\\s;{])${name}:\\s*([^;]+);`).exec(block)?.[1]?.trim();
 
 describe("base.css", () => {
-  it("task palette never equals accent, success or warning in either theme", () => {
-    for (const block of [light, dark]) {
-      const reserved = ["--accent", "--success", "--warning"].map((n) => val(block, n)!.toLowerCase());
-      for (const n of reserved) expect(n).toBeTruthy();
-      for (let i = 1; i <= 8; i++) {
-        const v = val(block, `--task-${i}`)!.toLowerCase();
-        expect(v).toBeTruthy();
-        expect(reserved).not.toContain(v);
-      }
-    }
+  it("task palette tokens are gone", () => {
+    expect(css).not.toMatch(new RegExp("--task" + "-"));
+  });
+  it("t017 tokens are defined in both themes", () => {
+    const names = [
+      "--success-text", "--warning-text", "--success-fill", "--on-success", "--accent-text",
+      "--toast-bg", "--toast-ink", "--toast-undo",
+      "--rest-1", "--rest-2", "--full-1", "--full-2", "--bloom-1", "--bloom-2", "--bloom-3",
+      "--bloom-ink-2", "--head-ink-2", "--head-accent", "--head-tint", "--glow",
+    ];
+    for (const block of [light, dark]) for (const n of names) expect(val(block, n), n).toBeTruthy();
+    for (const n of ["--font-rounded", "--spring", "--bloom-ink", "--bloom-tint"]) expect(val(light, n), n).toBeTruthy();
+    expect(val(light, "--font-rounded")).toMatch(/^ui-rounded/);
   });
   it("row state tokens are defined in both themes", () => {
     for (const block of [light, dark]) {
@@ -54,5 +57,11 @@ describe("base.css", () => {
   it("snackbar sits above the tab bar", () => {
     const toast = /\.toast\s*\{[^}]*\}/.exec(css)![0];
     expect(toast).toMatch(/bottom:[^;]*--tabbar-h/);
+  });
+  it("the toast leave clone is its own rule, positioned above the tab bar", () => {
+    expect(css).not.toMatch(/\.toast\s*,\s*\.toast-leaving|\.toast-leaving\s*,\s*\.toast\b/);
+    const leaving = /\.toast-leaving\s*\{[^}]*\}/.exec(css)![0];
+    expect(leaving).toMatch(/bottom:[^;]*--tabbar-h/);
+    expect(leaving).toContain("position: fixed");
   });
 });

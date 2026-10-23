@@ -1,6 +1,52 @@
 .today .title-row { display: flex; align-items: center; justify-content: space-between; }
-.today .date { margin: var(--space-1) 0 0; color: var(--label-2); font-size: var(--fs-small); }
-.today .summary { margin: 2px 0 0; color: var(--label-2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.today .date { margin: var(--space-1) 0 0; color: var(--head-ink-2); font-size: var(--fs-small); transition: color 900ms var(--ease); }
+.today .summary { margin: 2px 0 0; color: var(--head-ink-2); font-family: var(--font-rounded); font-size: var(--fs-small); font-weight: 600; font-variant-numeric: tabular-nums; transition: color 900ms var(--ease); }
+.today .summary .n { display: inline-block; }
+.today .summary .n.tick { animation: tick 450ms var(--spring); }
+@keyframes tick { from { transform: translateY(40%); opacity: 0.2; } }
+
+/* Progress gradient header: depth follows --p (0..1, set inline by today.ts); Day done blooms. */
+@property --p { syntax: "<number>"; inherits: true; initial-value: 0; }
+.today { position: relative; isolation: isolate; --p: 0; transition: --p 900ms var(--ease); }
+.today .hero {
+  position: absolute;
+  z-index: -1;
+  top: calc(-1 * var(--space-4) - env(safe-area-inset-top));
+  left: calc(-1 * var(--space-4));
+  right: calc(-1 * var(--space-4));
+  height: 320px;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(#000 45%, transparent);
+  mask-image: linear-gradient(#000 45%, transparent);
+}
+.hero .layer { position: absolute; inset: 0; }
+.hero .prog {
+  --a: color-mix(in oklch, var(--full-1) calc(var(--p) * 100%), var(--rest-1));
+  --b: color-mix(in oklch, var(--full-2) calc(var(--p) * 100%), var(--rest-2));
+  background: radial-gradient(120% 90% at 15% 0%, var(--a), transparent 70%), radial-gradient(90% 80% at 95% 15%, var(--b), transparent 70%);
+}
+.hero .bloom {
+  opacity: 0;
+  transition: opacity 1200ms var(--ease);
+  background:
+    radial-gradient(110% 90% at 10% 0%, var(--bloom-1), transparent 72%),
+    radial-gradient(80% 80% at 100% 10%, var(--bloom-3), transparent 70%),
+    radial-gradient(90% 70% at 60% 60%, var(--bloom-2), transparent 75%);
+}
+.hero .glow { opacity: 0; background: radial-gradient(70% 60% at 30% 10%, var(--glow), transparent 70%); }
+.today.state-daydone .hero .bloom { opacity: 1; }
+.today.pulse-a .hero .glow { animation: glow-a 800ms var(--ease); }
+.today.pulse-b .hero .glow { animation: glow-b 800ms var(--ease); }
+@keyframes glow-a { 30% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes glow-b { 30% { opacity: 1; } 100% { opacity: 0; } }
+.today .large-title { transition: color 900ms var(--ease); }
+.today .edit-toggle { color: var(--head-accent); transition: color 900ms var(--ease); }
+.today .add-btn { background: var(--head-tint); color: var(--head-accent); transition: background-color 900ms var(--ease), color 900ms var(--ease); }
+.today.state-daydone .large-title, .today.state-daydone .edit-toggle { color: var(--bloom-ink); }
+.today.state-daydone .date, .today.state-daydone .summary { color: var(--bloom-ink-2); }
+.today.state-daydone .add-btn { background: var(--bloom-tint); color: var(--bloom-ink); }
+/* First paint after a load: set the state without animating it. */
+.today.no-anim, .today.no-anim * { transition-duration: 0s !important; }
 .add-btn {
   display: grid;
   place-items: center;
@@ -46,23 +92,23 @@
   display: flex;
   align-items: center;
   padding-left: var(--space-5);
-  color: #fff;
   opacity: var(--reveal, 0);
 }
-.task .swipe-bg.start { background: var(--accent); }
-.task .swipe-bg.finish { background: var(--success); }
+.task .swipe-bg.start { background: var(--accent); color: var(--on-accent); }
+.task .swipe-bg.finish { background: var(--success-fill); color: var(--on-success); }
 .task .swipe-bg svg { width: 24px; height: 24px; }
-.task .dot { flex: none; width: 12px; height: 12px; border-radius: 50%; }
 .task .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .task .mins, .task .status { color: var(--label-2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
-.task .time { min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.task .time { font-family: var(--font-rounded); min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
 .task .time:empty { display: none; }
 .task.running .mins { display: none; }
 .task.running .row-body { background: var(--row-running); }
 .task.running.overtime .row-body { background: var(--row-overtime); }
 .task.running .time, .task.running .name { color: var(--label); }
 .task.done .name { text-decoration: line-through; color: var(--label-2); }
-.task.done .status { color: var(--success); }
+.task.done .status { color: var(--success-text); font-weight: 600; }
+.task .status.pop, .song .status.pop { display: inline-block; animation: pop 500ms var(--spring); }
+@keyframes pop { from { transform: scale(0.6); } to { transform: scale(1); } }
 .task button.act {
   flex: none;
   display: grid;
@@ -77,7 +123,7 @@
   background: var(--accent-tint);
   color: var(--accent);
 }
-.task.running button.act { background: var(--success); color: #fff; }
+.task.running button.act { background: var(--accent); color: var(--on-accent); }
 .task button.act svg { width: 20px; height: 20px; }
 
 .task.entering { animation: row-in var(--move-ms, 250ms) var(--ease); }
@@ -151,7 +197,7 @@
 @media (prefers-reduced-motion: reduce) { .metro-toggle svg { transition: none; } }
 
 /* Songs section: swipe-to-reveal rating */
-.songs-done { margin: 0 0 var(--space-2); color: var(--success); font-size: var(--fs-small); }
+.songs-done { margin: 0 0 var(--space-2); color: var(--success-text); font-size: var(--fs-small); }
 .song { position: relative; overflow: hidden; touch-action: pan-y; user-select: none; -webkit-user-select: none; --song-actions-w: 216px; }
 .song .row-body {
   position: relative;
@@ -179,12 +225,18 @@
   min-height: 44px;
   padding: 0;
   border: 0;
-  color: #fff;
   font: inherit;
+  font-family: var(--font-rounded);
   font-weight: 600;
 }
-.song button.rate-rough { background: var(--warning); }
-.song button.rate-ok { background: var(--accent); }
-.song button.rate-solid { background: var(--success); }
+.song button.rate-rough { background: color-mix(in srgb, var(--warning) 22%, var(--bg-elevated)); color: var(--warning-text); }
+.song button.rate-ok { background: var(--accent-tint); color: var(--accent-text); }
+.song button.rate-solid { background: color-mix(in srgb, var(--success) 22%, var(--bg-elevated)); color: var(--success-text); }
+.song.settle .row-body { animation: settle 420ms var(--ease); }
+@keyframes settle { from { transform: translateX(-12px) scale(0.98); } to { transform: none; } }
 .song button.rate:focus-visible { outline: 2px solid var(--label); outline-offset: -4px; }
-@media (prefers-reduced-motion: reduce) { .song .row-body { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .song .row-body { transition: none; }
+  /* The gradient may still change colour, but instantly. */
+  .today, .today * { transition: none !important; }
+}

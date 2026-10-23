@@ -488,12 +488,8 @@ describe("today layout", () => {
     mk();
     await flush();
     expect(document.querySelector(".todo .empty-card")?.textContent).toBe("All done for today");
-    expect(document.querySelector(".summary")?.textContent).toBe("1 of 1 · all done");
-  });
-  it("each row has a task colour dot", async () => {
-    mk();
-    await flush();
-    expect(row("a").querySelector(".dot")!.getAttribute("style")).toMatch(/var\(--task-\d\)/);
+    // t017: every due task finished and no songs section is Day done.
+    expect(document.querySelector(".summary")?.textContent).toBe("Day done");
   });
   it("a swipe follows the finger, and a cancelled partial drag leaves no drag transform", async () => {
     mk();
