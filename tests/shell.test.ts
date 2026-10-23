@@ -41,12 +41,12 @@ describe("shell", () => {
   });
   it("renders one nav link per route", () => {
     mount();
-    expect(document.querySelectorAll("nav a")).toHaveLength(routes.length);
+    expect(document.querySelectorAll("nav a")).toHaveLength(routes.filter((r) => r.tab !== false).length);
   });
   it("tab bar is a nav with real links, one aria-current tab matching the route, one h1 in main", async () => {
     mount();
     const links = [...document.querySelectorAll<HTMLAnchorElement>("nav.tabbar a")];
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(routes.map((r) => "#" + r.path));
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(routes.filter((r) => r.tab !== false).map((r) => "#" + r.path));
     expect(document.querySelectorAll("nav [aria-current=page]")).toHaveLength(1);
     expect(document.querySelector("nav [aria-current=page]")?.getAttribute("href")).toBe("#/today");
     expect(document.querySelectorAll("h1")).toHaveLength(1);
@@ -54,6 +54,12 @@ describe("shell", () => {
     await nav("#/settings");
     expect(document.querySelector("nav [aria-current=page]")?.getAttribute("href")).toBe("#/settings");
     expect(document.querySelector("h1")?.textContent).toBe("Settings");
+  });
+  it("renders #/edit without a tab bar entry", async () => {
+    mount();
+    await nav("#/edit");
+    expect(document.querySelector("main h1")?.textContent).toBe("Edit tasks");
+    expect(document.querySelectorAll("nav a")).toHaveLength(3);
   });
   it("marks only the active link and swaps heading", async () => {
     mount();

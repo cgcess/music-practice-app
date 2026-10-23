@@ -4,7 +4,8 @@ import type { IconName } from "./icons";
 import type { RepertoirePort, TodayPort } from "./ports";
 import type { Route } from "./router";
 import { repertoireView } from "./repertoire";
-import { defaultTodayEnv, todayView, type TodayEnv } from "./today";
+import { editTasksView } from "./editTasks";
+import { createSharedTimer, defaultTodayEnv, todayView, type TodayEnv } from "./today";
 
 export interface ViewResult {
   el: HTMLElement;
@@ -62,11 +63,21 @@ const placeholder =
   (title: string): View =>
   () => ({ el: titled(title, "Nothing here yet.") });
 
-export type AppRoute = Route<View> & { label: string; icon: IconName };
+/** `tab: false` routes are reachable by link only and get no tab bar entry. */
+export type AppRoute = Route<View> & { label: string; icon: IconName; tab?: boolean };
 
 export function buildRoutes(deps: ViewDeps): AppRoute[] {
+  // One timer for the whole session: the shell rebuilds views on navigation, so Today cannot own it.
+  const timer = deps.todayEnv?.timer ?? createSharedTimer(deps.todayEnv?.now ?? (() => Date.now()));
   return [
-    { path: "/today", label: "Today", icon: "today", view: () => todayView(deps.todayEnv ?? defaultTodayEnv(deps.today)) },
+    { path: "/today", label: "Today", icon: "today", view: () => todayView({ ...(deps.todayEnv ?? defaultTodayEnv(deps.today)), timer }) },
+    {
+      path: "/edit",
+      label: "Edit tasks",
+      icon: "today",
+      tab: false,
+      view: () => editTasksView({ port: deps.today, timer, feedback: deps.todayEnv?.feedback, after: deps.todayEnv?.after }),
+    },
     { path: "/repertoire", label: "Repertoire", icon: "repertoire", view: () => repertoireView(deps.repertoire ?? emptyRepertoire) },
     { path: "/settings", label: "Settings", icon: "settings", view: placeholder("Settings") },
   ];

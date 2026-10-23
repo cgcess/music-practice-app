@@ -6,7 +6,7 @@ import { buildRoutes, defaultDeps, notFound, defaultPath, type View, type ViewDe
 /** Mount main, footer and the bottom tab bar into root. Returns an unsubscribe fn for the router. */
 export function mountShell(root: HTMLElement, deps: ViewDeps = defaultDeps): () => void {
   const routes = buildRoutes(deps);
-  const links = routes.map((r) =>
+  const links = routes.filter((r) => r.tab !== false).map((r) =>
     h("a", { href: "#" + r.path, "data-path": r.path }, icon(r.icon), h("span", null, r.label)),
   );
   const main = h("main", { id: "main", tabindex: "-1" });

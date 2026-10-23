@@ -9,11 +9,11 @@ import { browserFeedbackEnv, createFeedback, type Feedback } from "./feedback";
 import { h } from "./h";
 import { browserMetronomeEnv, createMetronomePanel, type MetronomeEnv } from "./metronome";
 import { icon } from "./icons";
-import type { SongRating, SongSnapshot, TaskItem, TaskSnapshot, TimerPrefs, TodayPort, TodaySong } from "./ports";
-import { openSheet, type Sheet } from "./sheet";
+import type { SongRating, SongSnapshot, TaskItem, TimerPrefs, TodayPort, TodaySong } from "./ports";
 import { createStrengthBar } from "./strengthBar";
 import { attachSwipe } from "./swipe";
 import { attachSwipeReveal } from "./swipeReveal";
+import { createTaskForm } from "./taskForm";
 
 export interface TodayEnv {
   port: TodayPort;
@@ -27,6 +27,25 @@ export interface TodayEnv {
   onVisible: (fn: () => void) => () => void;
   /** Metronome audio/timer/visibility seam; defaults to the browser. */
   metronome?: MetronomeEnv;
+  /** Timer that outlives this view (the shell rebuilds views on navigation); absent: the view makes its own. */
+  timer?: SharedTimer;
+}
+
+/** A TimerController whose chime and overtime callbacks are rebound by whichever Today view is mounted. */
+export interface SharedTimer {
+  controller: TimerController;
+  hooks: { onChime: (taskId: string) => void; overtime: () => boolean };
+}
+
+export function createSharedTimer(now: () => number): SharedTimer {
+  const hooks: SharedTimer["hooks"] = { onChime: () => {}, overtime: () => config.timer.overtime };
+  const controller = new TimerController({
+    now,
+    graceMs: config.today.chimeGraceMs,
+    overtime: () => hooks.overtime(),
+    onChime: (id) => hooks.onChime(id),
+  });
+  return { controller, hooks };
 }
 
 export function defaultTodayEnv(port: TodayPort): TodayEnv {
@@ -47,8 +66,6 @@ export function defaultTodayEnv(port: TodayPort): TodayEnv {
   };
 }
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void } {
   let tasks: TaskItem[] = [];
   let prefs: TimerPrefs = { ...config.timer };
@@ -56,9 +73,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   let cancelToast: (() => void) | null = null;
   let cancelTick: (() => void) | null = null;
   let disposed = false;
-  let editing: TaskItem | null = null;
-  let editMode = false;
-  let deleting = false;
   let songs: TodaySong[] = [];
   let songsPerDay = 0;
   /** Rating labels live in memory only; after a reload a rated row reads "Rated". */
@@ -70,12 +84,10 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   let lastDone: number | null = null;
   let pulseSeq = 0;
 
-  const timer = new TimerController({
-    now: env.now,
-    graceMs: config.today.chimeGraceMs,
-    overtime: () => prefs.overtime,
-    onChime: () => env.feedback.chime(prefs),
-  });
+  const shared = env.timer ?? createSharedTimer(env.now);
+  const timer = shared.controller;
+  shared.hooks.overtime = () => prefs.overtime;
+  shared.hooks.onChime = () => env.feedback.chime(prefs);
 
   const reduceMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const entering = new Set<string>();
@@ -83,17 +95,17 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const popTasks = new Set<string>();
   const popSongs = new Set<string>();
   let doneOpen = true;
-  let sheet: Sheet | null = null;
 
   const todoList = h("ul", { class: "task-list inset-list" });
   const doneList = h("ul", { class: "task-list inset-list" });
   const toast = h("div", { class: "toast", role: "status" });
   const hero = h("div", { class: "hero", "aria-hidden": "true" }, h("div", { class: "layer prog" }), h("div", { class: "layer bloom" }), h("div", { class: "layer glow" }));
-  const errorEl = h("p", { class: "error", role: "alert" });
   const dateEl = h("p", { class: "date" });
   const summaryEl = h("p", { class: "summary" });
-  const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add task", onClick: () => openForm() }, icon("plus"));
-  const editToggle = h("button", { type: "button", class: "edit-toggle", onClick: () => toggleEditMode() }, "Edit");
+  const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add task", onClick: () => form.open() }, icon("plus"));
+  const editToggle = h("button", { type: "button", class: "edit-toggle", onClick: () => {
+    location.hash = "#/edit";
+  } }, "Edit");
   const strength = createStrengthBar();
   const metronome = createMetronomePanel({ port: env.port, env: env.metronome ?? browserMetronomeEnv() });
   const todoEmpty = h("div", { class: "empty-card" });
@@ -142,15 +154,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
 
   const toggleDone = () => {
     doneOpen = !doneOpen;
-    render();
-  };
-
-  const syncToggle = () => {
-    editToggle.textContent = editMode ? "Done" : "Edit";
-  };
-  const toggleEditMode = () => {
-    editMode = !editMode;
-    syncToggle();
     render();
   };
 
@@ -274,37 +277,12 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const makeRow = (t: TaskItem, today: string): HTMLElement => {
     const done = isDoneToday(t, today);
     const running = isRunning(t.id);
-    const cls = "task" + (done ? " done" : "") + (running ? " running" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : "") + (editMode ? " editing" : "");
+    const cls = "task" + (done ? " done" : "") + (running ? " running" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : "");
     const common = [
       h("span", { class: "name" }, t.name),
       h("span", { class: "mins" }, `${t.minutes} min`),
       h("span", { class: "time", "data-id": t.id }, running ? timeText() : ""),
     ];
-    if (editMode) {
-      // Edit mode: the whole row body opens the edit sheet; no start/stop button and no swipe.
-      const body = h(
-        "div",
-        {
-          class: "row-body",
-          role: "button",
-          tabindex: "0",
-          "aria-label": `Edit ${t.name}`,
-          "data-edit": t.id,
-          onClick: () => openForm(t),
-          onKeydown: (ev: Event) => {
-            const e = ev as KeyboardEvent;
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              openForm(t);
-            }
-          },
-        },
-        ...common,
-        done ? h("span", { class: "status" + (popTasks.has(t.id) ? " pop" : "") }, "✓ done") : null,
-        h("span", { class: "chev" }, icon("chevron")),
-      );
-      return h("li", { class: cls, "data-id": t.id }, body);
-    }
     const bg = h("div", { class: "swipe-bg " + (running ? "finish" : "start"), "aria-hidden": "true" }, icon(running ? "check" : "play"));
     const body = h(
       "div",
@@ -347,8 +325,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
 
   const render = () => {
     if (disposed) return;
-    const activeData = (document.activeElement as HTMLElement | null)?.dataset;
-    const focusSel = activeData?.act ? `[data-act="${activeData.act}"]` : activeData?.edit ? `[data-edit="${activeData.edit}"]` : "";
+    const activeAct = (document.activeElement as HTMLElement | null)?.dataset?.act;
+    const focusSel = activeAct ? `[data-act="${activeAct}"]` : "";
     const now = new Date(env.now());
     const today = todayLocal(now);
     for (const d of rowDetach) d();
@@ -409,11 +387,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   };
 
   const makeSongRow = (s: TodaySong): HTMLElement => {
-    const interactive = !s.ratedToday && !editMode;
+    const interactive = !s.ratedToday;
     const open = interactive && openSong === s.id;
     const label = songRatings.get(s.id) ?? "Rated";
     const popped = popSongs.has(s.id);
-    const cls = "song" + (s.ratedToday ? " rated" : "") + (popped ? " settle" : "") + (open ? " open" : "") + (editMode ? " editing" : "");
+    const cls = "song" + (s.ratedToday ? " rated" : "") + (popped ? " settle" : "") + (open ? " open" : "");
     const toggle = () => setOpenSong(openSong === s.id ? null : s.id);
     const bodyAttrs = interactive
       ? {
@@ -469,7 +447,6 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     const focusId = (document.activeElement as HTMLElement | null)?.dataset?.songBody;
     for (const d of songRowDetach) d();
     songRowDetach = [];
-    if (editMode) openSong = null;
     songSection.hidden = songsPerDay <= 0;
     songEmpty.hidden = songs.length > 0;
     songDone.hidden = !(songs.length > 0 && songs.every((x) => x.ratedToday));
@@ -550,6 +527,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   };
   document.addEventListener("pointerdown", onDocPointerDown);
 
+  let resumed = false;
   const load = async () => {
     try {
       [tasks, prefs] = await Promise.all([env.port.listTasks(), env.port.getTimerPrefs()]);
@@ -558,131 +536,26 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     } finally {
       tasksLoaded = true;
     }
+    // Chime (within grace) only once the user's sound/vibrate prefs are known.
+    if (resumed && !disposed) timer.tick();
     render();
     loadSettled();
   };
 
-  // Add-task sheet.
-  const nameIn = h("input", { type: "text", name: "name", required: true, id: "task-name", autocomplete: "off" });
-  const minsIn = h("input", {
-    type: "number",
-    name: "minutes",
-    id: "task-minutes",
-    inputmode: "numeric",
-    min: config.timer.minMinutes,
-    max: config.timer.maxMinutes,
-    value: 10,
-  });
-  const dailyIn = h("input", { type: "checkbox", name: "daily", id: "task-daily", checked: true });
-  const dayIns = DAY_NAMES.map((d, i) => h("input", { type: "checkbox", name: "day", value: i, "aria-label": d }));
-  const chip = (input: HTMLInputElement, text: string) => h("label", { class: "chip" }, input, h("span", null, text));
-  const submitBtn = h("button", { type: "submit" }, "Add");
-  const deleteBtn = h("button", { type: "button", class: "danger", onClick: () => void remove() }, "Delete");
-  const actions = h(
-    "div",
-    { class: "sheet-actions" },
-    h("button", { type: "button", class: "cancel", onClick: () => sheet?.close() }, "Cancel"),
-    submitBtn,
-  );
-  const form = h(
-    "form",
-    {
-      novalidate: true,
-      onSubmit: (e) => {
-        e.preventDefault();
-        void submit();
-      },
-    },
-    h("label", { class: "field" }, "Name", nameIn),
-    h("label", { class: "field" }, "Minutes", minsIn),
-    h("fieldset", { class: "chips" }, h("legend", null, "Repeat"), chip(dailyIn, "Daily"), DAY_NAMES.map((d, i) => chip(dayIns[i]!, d))),
-    errorEl,
-    actions,
-  );
-  const setError = (m: string) => {
-    errorEl.textContent = m;
-  };
-  /** Opens the shared sheet: empty "Add task" form, or "Edit task" pre-filled from `task`. */
-  const openForm = (task?: TaskItem) => {
-    if (sheet || disposed) return;
-    editing = task ?? null;
-    deleting = false;
-    deleteBtn.disabled = false;
-    setError("");
-    nameIn.value = task ? task.name : "";
-    minsIn.value = String(task ? task.minutes : 10);
-    const days = task ? task.days : "daily";
-    dailyIn.checked = days === "daily";
-    dayIns.forEach((c, i) => (c.checked = days !== "daily" && days.includes(i)));
-    submitBtn.textContent = task ? "Save" : "Add";
-    deleteBtn.remove();
-    if (task) actions.insertBefore(deleteBtn, submitBtn);
-    sheet = openSheet(form, { title: task ? "Edit task" : "Add task", onClose: () => (sheet = null) });
-  };
-  const submit = async () => {
-    const name = nameIn.value.trim();
-    if (!name) return setError("Name is required");
-    const days: "daily" | number[] = dailyIn.checked
-      ? "daily"
-      : dayIns.flatMap((c, i) => (c.checked ? [i] : []));
-    if (days !== "daily" && days.length === 0) return setError("Choose Daily or at least one day");
-    const patch = { name, minutes: Number(minsIn.value), days };
-    try {
-      if (editing) {
-        // A running task keeps the target fixed at start (timer.ts), so a minutes change applies from the next start;
-        // the running row hides .mins via CSS, so nothing visibly changes meanwhile. A name change shows at once.
-        await env.port.updateTask(editing.id, patch);
-      } else {
-        await env.port.addTask(patch);
-      }
-    } catch (e) {
-      return setError(e instanceof Error ? e.message : editing ? "Could not save task" : "Could not add task");
-    }
-    setError("");
-    sheet?.close();
+  const reloadTasks = async () => {
     tasks = await env.port.listTasks();
     render();
   };
-  const remove = async () => {
-    const task = editing;
-    if (!task || deleting) return;
-    deleting = true;
-    deleteBtn.disabled = true;
-    let snap: TaskSnapshot;
-    try {
-      snap = await env.port.deleteTask(task.id);
-    } catch (e) {
-      deleting = false;
-      deleteBtn.disabled = false;
-      return setError(e instanceof Error ? e.message : "Could not delete task");
-    }
-    // Undo restores the task, not its running state.
-    if (isRunning(task.id)) {
-      timer.stop();
-      stopTick();
-      env.feedback.releaseWakeLock();
-    }
-    sheet?.close();
-    // The delete toast replaces any completion toast, so completion undo is dropped.
-    undo = null;
-    showToast(`Deleted ${snap.name}`, () => void restore(snap));
-    tasks = await env.port.listTasks();
-    render();
-    addBtn.focus();
-  };
-  const restore = async (snap: TaskSnapshot) => {
-    hideToast();
-    try {
-      await env.port.restoreTask(snap);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : "Could not restore");
-      return;
-    }
-    tasks = await env.port.listTasks();
-    render();
-  };
+  // Today only adds; editing, deleting and Undo live on the edit page.
+  const form = createTaskForm({ port: env.port, onChanged: reloadTasks });
 
   detach.push(env.onVisible(updateTimes));
+  // Back from the edit page with a timer still running: resume ticking and the wake lock; a due chime fires only within grace.
+  if (["running", "overtime", "timesup"].includes(timer.snapshot().phase)) {
+    startTick();
+    env.feedback.acquireWakeLock();
+    resumed = true;
+  }
   detach.push(() => document.removeEventListener("pointerdown", onDocPointerDown));
   void load();
   void loadSongs();
@@ -692,7 +565,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     dispose() {
       disposed = true;
       metronome.dispose();
-      sheet?.close();
+      form.dispose();
       stopTick();
       cancelToast?.();
       for (const d of detach) d();

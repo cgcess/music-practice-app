@@ -285,24 +285,6 @@ describe("rating and undo", () => {
   });
 });
 
-describe("edit mode", () => {
-  it("blocks swipe and open, closes an open row, and restores after Done", async () => {
-    await mount();
-    swipe(li("a"), -120);
-    const toggle = document.querySelector("button.edit-toggle") as HTMLButtonElement;
-    toggle.click();
-    expect(li("a").classList.contains("open")).toBe(false);
-    swipe(li("a"), -120);
-    body("a").click();
-    expect(li("a").classList.contains("open")).toBe(false);
-    expect(li("a").querySelector("button.rate")).toBeNull();
-    expect(body("a").getAttribute("role")).toBeNull();
-    toggle.click();
-    swipe(li("a"), -120);
-    expect(li("a").classList.contains("open")).toBe(true);
-  });
-});
-
 describe("keyboard focus after rating (t019)", () => {
   it("focus on a rate button moves to Undo; a click without focus does not steal it", async () => {
     await mount();
@@ -492,7 +474,7 @@ describe("per-item touch hooks (t017)", () => {
     expect(status.classList.contains("pop")).toBe(true);
     expect(document.querySelector(".summary .n")!.classList.contains("tick")).toBe(true);
     expect(hasCls("pulse-a") || hasCls("pulse-b")).toBe(true);
-    (document.querySelector(".edit-toggle") as HTMLButtonElement).click(); // any render
+    (document.querySelector(".group-toggle") as HTMLButtonElement).click(); // any render
     expect(document.querySelector("li.task.done .status")!.classList.contains("pop")).toBe(false);
   });
   it("finishing by swipe pops too", async () => {
@@ -516,9 +498,9 @@ describe("per-item touch hooks (t017)", () => {
     await mount();
     await rate("a");
     expect(hasCls("pulse-a")).toBe(true);
-    (document.querySelector(".edit-toggle") as HTMLButtonElement).click(); // render between pulse and its next change
+    (document.querySelector(".group-toggle") as HTMLButtonElement).click(); // render between pulse and its next change
     expect(hasCls("pulse-a")).toBe(true);
-    (document.querySelector(".edit-toggle") as HTMLButtonElement).click();
+    (document.querySelector(".group-toggle") as HTMLButtonElement).click();
     await rate("b");
     expect(hasCls("pulse-b")).toBe(true);
     expect(hasCls("pulse-a")).toBe(false);
@@ -527,7 +509,7 @@ describe("per-item touch hooks (t017)", () => {
   it("a second render has no pop or settle", async () => {
     await mount();
     await rate("a");
-    (document.querySelector(".edit-toggle") as HTMLButtonElement).click();
+    (document.querySelector(".group-toggle") as HTMLButtonElement).click();
     expect(document.querySelector(".pop, .settle")).toBeNull();
   });
   it("adds none of the touch hooks under reduced motion", async () => {
