@@ -1,3 +1,4 @@
+import { config } from "../config";
 import { h } from "./h";
 import type { IconName } from "./icons";
 import type { TodayPort } from "./ports";
@@ -25,7 +26,7 @@ const emptyPort: TodayPort = {
   restoreTask: async () => {},
   setCompleted: async () => {},
   getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
-  getTempo: async () => 100,
+  getTempo: async () => config.metronome.defaultBpm,
   setTempo: async () => {},
 };
 

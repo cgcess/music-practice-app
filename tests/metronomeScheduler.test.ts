@@ -49,12 +49,19 @@ describe("metronome scheduler", () => {
     }
     expect(new Set(r.times).size).toBe(r.times.length);
   });
-  it("catches up after a late tick without duplicates", () => {
+  it("late tick does not burst", () => {
     const r = rig(120);
     r.s.start();
-    r.advance(1000);
-    expect(r.times).toEqual([10, 10.5, 11]);
+    r.advance(1000); // now = 11, no intermediate ticks
+    expect(r.times).toEqual([10, 11]);
+    r.times.slice(1).forEach((t) => expect(t).toBeGreaterThanOrEqual(11));
     expect(new Set(r.times).size).toBe(r.times.length);
+  });
+  it("late tick at a fast tempo schedules only from now", () => {
+    const r = rig(600);
+    r.s.start();
+    r.advance(5000);
+    expect(r.times).toEqual([10, 15]);
   });
   it("applies a tempo change from the next beat", () => {
     const r = rig(60);

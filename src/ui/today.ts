@@ -42,7 +42,6 @@ export function defaultTodayEnv(port: TodayPort): TodayEnv {
       return () => clearTimeout(id);
     },
     onVisible: fenv.onVisible,
-    metronome: browserMetronomeEnv(),
   };
 }
 

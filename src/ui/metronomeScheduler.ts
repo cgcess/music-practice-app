@@ -20,12 +20,15 @@ export interface MetronomeScheduler {
 /**
  * Lookahead scheduler: every tick it queues every beat that falls before audioNow + lookahead,
  * advancing by 60/bpm per beat. The first beat is at the audio time of start().
+ * If a tick runs late, missed beats are dropped and scheduling resumes from now (no catch-up burst).
  */
 export function createScheduler(d: SchedulerDeps): MetronomeScheduler {
   let cancel: (() => void) | null = null;
   let next = 0;
   const pump = () => {
-    const horizon = d.audioNow() + d.lookaheadMs / 1000;
+    const now = d.audioNow();
+    if (next < now) next = now;
+    const horizon = now + d.lookaheadMs / 1000;
     while (next < horizon) {
       d.schedule(next);
       next += 60 / d.bpm();

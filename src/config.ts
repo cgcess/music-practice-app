@@ -1,5 +1,7 @@
 import type { Settings } from "./data/schema";
 
+const DEFAULT_METRONOME_BPM = 100;
+
 export const config = {
   sr: {
     initialIntervalDays: 1,
@@ -19,7 +21,7 @@ export const config = {
     maxMinutes: 240,
   },
   metronome: {
-    defaultBpm: 100,
+    defaultBpm: DEFAULT_METRONOME_BPM,
     minBpm: 30,
     maxBpm: 240,
     step: 1,
@@ -30,7 +32,7 @@ export const config = {
     clickHz: 1000,
     clickMs: 30,
     /** Tempo from the Settings record (defaults to defaultBpm). */
-    bpm: 100,
+    bpm: DEFAULT_METRONOME_BPM,
   },
   today: {
     /** How long the "Done - Undo" toast stays. */
