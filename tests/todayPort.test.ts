@@ -106,6 +106,7 @@ describe("todayPort edit/delete", () => {
     const { port } = setup();
     await port.addTask({ name: "S", minutes: 5, days: "daily" });
     await expect(port.updateTask("id-1", { name: "S", minutes: 241, days: "daily" })).rejects.toBeInstanceOf(ValidationError);
+    await expect(port.updateTask("id-1", { name: "S", minutes: 0, days: "daily" })).rejects.toBeInstanceOf(ValidationError);
     await expect(port.updateTask("nope", { name: "S", minutes: 5, days: "daily" })).rejects.toThrow("Task not found");
     await expect(port.deleteTask("nope")).rejects.toThrow("Task not found");
   });

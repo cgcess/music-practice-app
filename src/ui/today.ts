@@ -52,6 +52,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   let cancelTick: (() => void) | null = null;
   let disposed = false;
   let editing: TaskItem | null = null;
+  let editMode = false;
+  let deleting = false;
 
   const timer = new TimerController({
     now: env.now,
@@ -72,6 +74,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const dateEl = h("p", { class: "date" });
   const summaryEl = h("p", { class: "summary" });
   const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add task", onClick: () => openForm() }, icon("plus"));
+  const editToggle = h("button", { type: "button", class: "edit-toggle", onClick: () => toggleEditMode() }, "Edit");
   const todoEmpty = h("div", { class: "empty-card" });
   const emptyDue = h("div", { class: "empty-card" }, "No tasks due today. Tap + to add one.");
   const todoGroup = h("section", { class: "group todo" }, h("h2", { class: "group-title" }, "To do"), todoEmpty, todoList);
@@ -80,7 +83,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const el = h(
     "section",
     { class: "today" },
-    h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), addBtn), dateEl, summaryEl),
+    h("header", { class: "large-header" }, h("div", { class: "title-row" }, h("h1", { class: "large-title" }, "Today"), editToggle, addBtn), dateEl, summaryEl),
     emptyDue,
     todoGroup,
     doneGroup,
@@ -93,6 +96,15 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
 
   const toggleDone = () => {
     doneOpen = !doneOpen;
+    render();
+  };
+
+  const syncToggle = () => {
+    editToggle.textContent = editMode ? "Done" : "Edit";
+  };
+  const toggleEditMode = () => {
+    editMode = !editMode;
+    syncToggle();
     render();
   };
 
@@ -196,24 +208,46 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     if (!disposed) render();
   };
 
-  const editBtn = (t: TaskItem): HTMLElement => {
-    const b = h("button", { type: "button", class: "edit", "data-edit": t.id, "aria-label": `Edit ${t.name}`, onClick: () => openForm(t) }, icon("pencil"));
-    // Keep the row swipe (finish) from starting on the edit button.
-    b.addEventListener("pointerdown", (e) => e.stopPropagation());
-    return b;
-  };
-
   const makeRow = (t: TaskItem, today: string): HTMLElement => {
     const done = isDoneToday(t, today);
     const running = isRunning(t.id);
-    const bg = h("div", { class: "swipe-bg " + (running ? "finish" : "start"), "aria-hidden": "true" }, icon(running ? "check" : "play"));
-    const body = h(
-      "div",
-      { class: "row-body" },
+    const cls = "task" + (done ? " done" : "") + (running ? " running" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : "") + (editMode ? " editing" : "");
+    const common = [
       h("span", { class: "dot", style: `background:${taskColor(t.id)}` }),
       h("span", { class: "name" }, t.name),
       h("span", { class: "mins" }, `${t.minutes} min`),
       h("span", { class: "time", "data-id": t.id }, running ? timeText() : ""),
+    ];
+    if (editMode) {
+      // Edit mode: the whole row body opens the edit sheet; no start/stop button and no swipe.
+      const body = h(
+        "div",
+        {
+          class: "row-body",
+          role: "button",
+          tabindex: "0",
+          "aria-label": `Edit ${t.name}`,
+          "data-edit": t.id,
+          onClick: () => openForm(t),
+          onKeydown: (ev: Event) => {
+            const e = ev as KeyboardEvent;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openForm(t);
+            }
+          },
+        },
+        ...common,
+        done ? h("span", { class: "status" }, "✓ done") : null,
+        h("span", { class: "chev" }, icon("chevron")),
+      );
+      return h("li", { class: cls, "data-id": t.id }, body);
+    }
+    const bg = h("div", { class: "swipe-bg " + (running ? "finish" : "start"), "aria-hidden": "true" }, icon(running ? "check" : "play"));
+    const body = h(
+      "div",
+      { class: "row-body" },
+      ...common,
       done
         ? h("span", { class: "status" }, "✓ done")
         : h(
@@ -227,14 +261,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
             },
             icon(running ? "check" : "play"),
           ),
-      editBtn(t),
     );
-    const li = h(
-      "li",
-      { class: "task" + (done ? " done" : "") + (running ? " running" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : ""), "data-id": t.id },
-      done ? null : bg,
-      body,
-    );
+    const li = h("li", { class: cls, "data-id": t.id }, done ? null : bg, body);
     if (!done) {
       rowDetach.push(
         attachSwipe(li, () => act(t), {
@@ -337,6 +365,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const openForm = (task?: TaskItem) => {
     if (sheet || disposed) return;
     editing = task ?? null;
+    deleting = false;
+    deleteBtn.disabled = false;
     setError("");
     nameIn.value = task ? task.name : "";
     minsIn.value = String(task ? task.minutes : 10);
@@ -374,11 +404,15 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   };
   const remove = async () => {
     const task = editing;
-    if (!task) return;
+    if (!task || deleting) return;
+    deleting = true;
+    deleteBtn.disabled = true;
     let snap: TaskSnapshot;
     try {
       snap = await env.port.deleteTask(task.id);
     } catch (e) {
+      deleting = false;
+      deleteBtn.disabled = false;
       return setError(e instanceof Error ? e.message : "Could not delete task");
     }
     // Undo restores the task, not its running state.
