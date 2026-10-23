@@ -7,6 +7,8 @@ export interface PortDeps {
   newId: () => string;
   nowIso: () => string;
   getEffectiveConfig: (s?: Settings | null) => Config;
+  /** Local date "YYYY-MM-DD"; defaults to the device clock. */
+  today?: () => string;
 }
 
 /**

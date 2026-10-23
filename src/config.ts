@@ -9,8 +9,22 @@ export const config = {
     easeMax: 3.0,
     easeInitial: 2.5,
     maxIntervalDays: 365,
-    ratingScale: [1, 2, 3, 4] as readonly number[],
+    ratingScale: ["rough", "ok", "solid"] as const,
+    /** Ease change for a "rough" rating (subtracted). */
+    easeRoughDelta: 0.2,
+    /** Ease change for a "solid" rating (added). */
+    easeSolidDelta: 0.15,
+    /** Extra interval multiplier for a "solid" rating. */
+    solidMultiplier: 1.3,
+    /** Interval fuzz, as a fraction either side (0.1 = +-10%). */
+    fuzzPct: 0.1,
+    /** Fuzz applies only to rounded intervals of at least this many days. */
+    fuzzMinIntervalDays: 3,
+    /** A new song is first due 0..this many days after it is added. */
+    newSongSpreadDays: 7,
   },
+  /** Upper bound of the songs-per-day stepper on the Repertoire tab. */
+  maxSongsPerDay: 10,
   songsPerDay: 3,
   suggestionPeriod: "daily" as "daily" | "weekly",
   timer: {

@@ -35,3 +35,36 @@ export interface TodayPort {
   /** Persists the tempo; rejects with a validation error when out of range. */
   setTempo(bpm: number): Promise<void>;
 }
+
+/** Repertoire tab port (see src/app/repertoirePort.ts). */
+export interface SongItem {
+  id: string;
+  title: string;
+  dueDate: string;
+}
+/** Full stored record of a song, kept for delete-undo. Structural: the data layer's Song is assignable. */
+export interface SongSnapshot extends SongItem {
+  ease: number;
+  intervalDays: number;
+  lastReviewed: string | null;
+  createdAt: string;
+}
+export interface BulkAddResult {
+  added: number;
+  skipped: number;
+}
+export interface RepertoirePort {
+  /** Songs ordered by dueDate, then title (case-insensitive), then id. */
+  listSongs(): Promise<SongItem[]>;
+  getSongsPerDay(): Promise<number>;
+  /** Rounds and clamps to 0..max; rejects with RangeError for non-finite input. */
+  setSongsPerDay(n: number): Promise<void>;
+  /** Adds one song (trimmed title); rejects when the title is blank. */
+  addSong(title: string): Promise<void>;
+  /** One title per entry: trims, drops blanks, skips case-insensitive duplicates of existing and earlier titles. */
+  addSongs(titles: string[]): Promise<BulkAddResult>;
+  renameSong(id: string, title: string): Promise<void>;
+  /** Removes the song and returns its full record so it can be restored. */
+  deleteSong(id: string): Promise<SongSnapshot>;
+  restoreSong(snapshot: SongSnapshot): Promise<void>;
+}

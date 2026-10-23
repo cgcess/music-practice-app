@@ -1,5 +1,6 @@
 import { log } from "./log";
 import { registerServiceWorker, requestPersistence } from "./pwa";
+import { makeRepertoirePort } from "./app/repertoirePort";
 import { makeTodayPort } from "./app/todayPort";
 import { getEffectiveConfig } from "./config";
 import { nowIso } from "./dates";
@@ -8,12 +9,15 @@ import { store } from "./data/store";
 import { mountShell } from "./ui/shell";
 import "./ui/base.css";
 import "./ui/today.css";
+import "./ui/repertoire.css";
 
 log("music-practice start");
 const app = document.getElementById("app");
 if (app) {
-  const today = makeTodayPort(store, { newId, nowIso: () => nowIso(), getEffectiveConfig });
-  mountShell(app, { today });
+  const deps = { newId, nowIso: () => nowIso(), getEffectiveConfig };
+  const today = makeTodayPort(store, deps);
+  const repertoire = makeRepertoirePort(store, deps);
+  mountShell(app, { today, repertoire });
 }
 
 void requestPersistence(navigator.storage);

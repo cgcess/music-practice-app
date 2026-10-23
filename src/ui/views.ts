@@ -1,8 +1,9 @@
 import { config } from "../config";
 import { h } from "./h";
 import type { IconName } from "./icons";
-import type { TodayPort } from "./ports";
+import type { RepertoirePort, TodayPort } from "./ports";
 import type { Route } from "./router";
+import { repertoireView } from "./repertoire";
 import { defaultTodayEnv, todayView, type TodayEnv } from "./today";
 
 export interface ViewResult {
@@ -14,6 +15,7 @@ export type View = (params: Record<string, string>) => ViewResult;
 
 export interface ViewDeps {
   today: TodayPort;
+  repertoire?: RepertoirePort;
   /** Test seam: full Today environment (clock, timers, feedback). */
   todayEnv?: TodayEnv;
 }
@@ -28,6 +30,17 @@ const emptyPort: TodayPort = {
   getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
   getTempo: async () => config.metronome.defaultBpm,
   setTempo: async () => {},
+};
+
+const emptyRepertoire: RepertoirePort = {
+  listSongs: async () => [],
+  getSongsPerDay: async () => config.songsPerDay,
+  setSongsPerDay: async () => {},
+  addSong: async () => {},
+  addSongs: async () => ({ added: 0, skipped: 0 }),
+  renameSong: async () => {},
+  deleteSong: async (id) => ({ id, title: "", dueDate: "1970-01-01", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" }),
+  restoreSong: async () => {},
 };
 
 const titled = (title: string, body: string): HTMLElement =>
@@ -47,12 +60,12 @@ export type AppRoute = Route<View> & { label: string; icon: IconName };
 export function buildRoutes(deps: ViewDeps): AppRoute[] {
   return [
     { path: "/today", label: "Today", icon: "today", view: () => todayView(deps.todayEnv ?? defaultTodayEnv(deps.today)) },
-    { path: "/repertoire", label: "Repertoire", icon: "repertoire", view: placeholder("Repertoire") },
+    { path: "/repertoire", label: "Repertoire", icon: "repertoire", view: () => repertoireView(deps.repertoire ?? emptyRepertoire) },
     { path: "/settings", label: "Settings", icon: "settings", view: placeholder("Settings") },
   ];
 }
 
-export const defaultDeps: ViewDeps = { today: emptyPort };
+export const defaultDeps: ViewDeps = { today: emptyPort, repertoire: emptyRepertoire };
 export const routes = buildRoutes(defaultDeps);
 
 export const defaultPath = "/today";
