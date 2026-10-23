@@ -278,4 +278,38 @@ describe("todayPort songs (t014)", () => {
     await repo.addSong("B");
     expect((await port.listTodaySongs()).songs.map((s) => s.id)).toEqual(["a"]);
   });
+
+  describe("top-up from both tabs (t016)", () => {
+    const seedFour = async (store: Store) => {
+      await put(store, 3, fut("a", DAY), fut("b", "2026-10-25"), fut("c", "2026-10-26"), fut("d", "2026-10-28"));
+    };
+    const dues = async (store: Store) => (await store.listSongs()).map((s) => [s.id, s.dueDate]).sort();
+    it("Repertoire then Today and Today then Repertoire match Today alone", async () => {
+      const alone = mkSongs();
+      await seedFour(alone.store);
+      const base = await alone.port.listTodaySongs();
+      const baseDues = await dues(alone.store);
+
+      const A = mkSongs();
+      await seedFour(A.store);
+      await A.repo.listSongs();
+      expect(await A.port.listTodaySongs()).toEqual(base);
+      expect(await dues(A.store)).toEqual(baseDues);
+
+      const B = mkSongs();
+      await seedFour(B.store);
+      expect(await B.port.listTodaySongs()).toEqual(base);
+      await B.repo.listSongs();
+      expect(await dues(B.store)).toEqual(baseDues);
+    });
+    it("Today second call makes no writes", async () => {
+      const { store, d } = mkSongs();
+      await seedFour(store);
+      await makeTodayPort(store, d).listTodaySongs();
+      let puts = 0;
+      const spy = { ...store, getSettings: () => store.getSettings(), listSongs: () => store.listSongs(), getSong: (id: string) => store.getSong(id), putSong: async (s: ReturnType<typeof song>) => { puts++; return store.putSong(s); } };
+      await makeTodayPort(spy as unknown as Store, d).listTodaySongs();
+      expect(puts).toBe(0);
+    });
+  });
 });

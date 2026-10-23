@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { makeRepertoirePort } from "../src/app/repertoirePort";
 import { config, getEffectiveConfig } from "../src/config";
 import { Store } from "../src/data/store";
-import { song } from "./helpers";
+import { dueText } from "../src/sr/dueText";
+import { makeTodayPort } from "../src/app/todayPort";
+import { settings, song } from "./helpers";
 
 let n = 0;
 const deps = () => {
@@ -57,6 +59,7 @@ describe("repertoirePort", () => {
 
   it("lists by dueDate, then title case-insensitive, then id", async () => {
     const { port, store } = setup();
+    await store.putSettings({ ...settings(), songsPerDay: 0 });
     await store.putSong(song({ id: "3", title: "banana", dueDate: "2026-10-25", lastReviewed: null }));
     await store.putSong(song({ id: "2", title: "Cherry", dueDate: "2026-10-24", lastReviewed: null }));
     await store.putSong(song({ id: "1", title: "apple", dueDate: "2026-10-25", lastReviewed: null }));
@@ -116,5 +119,125 @@ describe("repertoirePort add-time due rule (t014)", () => {
     await port.addSong("New");
     const added = (await store.listSongs()).find((s) => s.title === "New")!;
     expect(added.dueDate > "2026-10-23").toBe(true);
+  });
+
+  describe("repertoire top-up (t016)", () => {
+    const DAY = "2026-10-23";
+    const fut = (id: string, dueDate: string, o = {}) => song({ id, dueDate, lastReviewed: null, ...o });
+    const counting = (store: Store, opts: { failPut?: boolean; onList?: () => Promise<void> } = {}) => {
+      const c = { puts: 0 };
+      const wrapped = {
+        getSettings: () => store.getSettings(),
+        getSong: (id: string) => store.getSong(id),
+        listSongs: async () => {
+          const r = await store.listSongs();
+          await opts.onList?.();
+          return r;
+        },
+        putSong: async (s: Parameters<Store["putSong"]>[0]) => {
+          c.puts++;
+          if (opts.failPut) throw new Error("boom");
+          return store.putSong(s);
+        },
+      };
+      return { c, wrapped };
+    };
+    const seed = async (store: Store, spd = 3) => {
+      await store.putSettings({ ...settings(), songsPerDay: spd });
+      await store.putSong(fut("a", DAY));
+      await store.putSong(fut("b", "2026-10-25"));
+      await store.putSong(fut("c", "2026-10-26"));
+      await store.putSong(fut("d", "2026-10-28"));
+    };
+
+    it("Repertoire-first: the two soonest read as today, the third keeps its date", async () => {
+      const { port, store } = setup();
+      await seed(store);
+      const listed = await port.listSongs();
+      const byId = new Map(listed.map((s) => [s.id, s.dueDate]));
+      expect(byId.get("b")).toBe(DAY);
+      expect(byId.get("c")).toBe(DAY);
+      expect(byId.get("d")).toBe("2026-10-28");
+      const stored = await store.listSongs();
+      expect(stored.find((s) => s.id === "b")!.dueDate).toBe(DAY);
+      expect(stored.find((s) => s.id === "c")!.dueDate).toBe(DAY);
+      expect(stored.find((s) => s.id === "d")!.dueDate).toBe("2026-10-28");
+      expect(dueText(byId.get("b")!, DAY)).toBe("today");
+    });
+
+    it("second call makes no writes", async () => {
+      const { store } = setup();
+      await seed(store);
+      const { c, wrapped } = counting(store);
+      const port = makeRepertoirePort({ ...store, ...wrapped, deleteSong: (id: string) => store.deleteSong(id), putSettings: (x: Parameters<Store["putSettings"]>[0]) => store.putSettings(x) } as unknown as Store, deps());
+      await port.listSongs();
+      expect(c.puts).toBe(2);
+      await port.listSongs();
+      expect(c.puts).toBe(2);
+    });
+
+    it("a song already rated today is kept and not re-pulled", async () => {
+      const { port, store } = setup();
+      await store.putSettings({ ...settings(), songsPerDay: 1 });
+      await store.putSong(song({ id: "r", lastReviewed: DAY, dueDate: "2026-10-30" }));
+      await store.putSong(fut("f", "2026-10-25"));
+      const listed = await port.listSongs();
+      expect(listed.find((s) => s.id === "r")!.dueDate).toBe("2026-10-30");
+      expect(listed.find((s) => s.id === "f")!.dueDate).toBe("2026-10-25");
+    });
+
+    it("songsPerDay 0 and an empty repertoire make no writes", async () => {
+      const a = setup();
+      await a.store.putSettings({ ...settings(), songsPerDay: 0 });
+      await a.store.putSong(fut("a", "2026-10-30"));
+      const ca = counting(a.store);
+      await makeRepertoirePort(ca.wrapped as unknown as Store, deps()).listSongs();
+      expect(ca.c.puts).toBe(0);
+      const b = setup();
+      const cb = counting(b.store);
+      expect(await makeRepertoirePort(cb.wrapped as unknown as Store, deps()).listSongs()).toEqual([]);
+      expect(cb.c.puts).toBe(0);
+    });
+
+    it("a failing write still returns the list without rejecting", async () => {
+      const { store } = setup();
+      await seed(store);
+      const { wrapped } = counting(store, { failPut: true });
+      const listed = await makeRepertoirePort(wrapped as unknown as Store, deps()).listSongs();
+      expect(listed.map((s) => s.id).sort()).toEqual(["a", "b", "c", "d"]);
+      expect(listed.find((s) => s.id === "b")!.dueDate).toBe("2026-10-25");
+    });
+
+    it("a rename between the read and the write is not overwritten", async () => {
+      const { store } = setup();
+      await seed(store);
+      let done = false;
+      const { wrapped } = counting(store, {
+        onList: async () => {
+          if (done) return;
+          done = true;
+          await store.putSong({ ...(await store.getSong("b"))!, title: "Renamed" });
+        },
+      });
+      await makeRepertoirePort(wrapped as unknown as Store, deps()).listSongs();
+      const b = (await store.getSong("b"))!;
+      expect(b.title).toBe("Renamed");
+      expect(b.dueDate).toBe(DAY);
+    });
+
+    it("a song rated between the read and the write is not pulled", async () => {
+      const { store } = setup();
+      await seed(store);
+      let done = false;
+      const { wrapped } = counting(store, {
+        onList: async () => {
+          if (done) return;
+          done = true;
+          await store.putSong({ ...(await store.getSong("b"))!, lastReviewed: DAY, dueDate: "2026-10-30" });
+        },
+      });
+      await makeRepertoirePort(wrapped as unknown as Store, deps()).listSongs();
+      expect((await store.getSong("b"))!.dueDate).toBe("2026-10-30");
+    });
   });
 });

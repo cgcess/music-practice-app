@@ -5,6 +5,7 @@ import type { Settings, Song } from "../data/schema";
 import { newSong } from "../sr/scheduler";
 import type { RepertoirePort } from "../ui/ports";
 import type { PortDeps } from "./todayPort";
+import { topUpToday } from "./topUp";
 
 const key = (t: string) => t.trim().toLowerCase();
 
@@ -41,7 +42,7 @@ export function makeRepertoirePort(
 
   return {
     async listSongs() {
-      const songs = await store.listSongs();
+      const { songs } = await topUpToday(store, deps);
       return songs
         .map((s) => ({ id: s.id, title: s.title, dueDate: s.dueDate }))
         .sort((a, b) => {

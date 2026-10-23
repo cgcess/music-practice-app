@@ -2,7 +2,8 @@ import type { Store } from "../data/store";
 import type { Config } from "../config";
 import { todayLocal } from "../dates";
 import type { Settings, Task } from "../data/schema";
-import { dailySelection, planTopUp, rateSong } from "../sr/scheduler";
+import { dailySelection, rateSong } from "../sr/scheduler";
+import { topUpToday } from "./topUp";
 import type { TodayPort } from "../ui/ports";
 
 export interface PortDeps {
@@ -77,21 +78,7 @@ export function makeTodayPort(
       await store.putSettings({ ...base, metronomeBpm: bpm });
     },
     async listTodaySongs() {
-      const day = today();
-      const songsPerDay = deps.getEffectiveConfig(await store.getSettings()).songsPerDay;
-      let songs = await store.listSongs();
-      const pulled = planTopUp(songs, day, songsPerDay).map((s) => ({ ...s, dueDate: day }));
-      if (pulled.length > 0) {
-        // Persisting the pulled-ahead dueDate keeps the selection stable across reloads. A failed write
-        // must not break the view: fall back to the unmodified list.
-        try {
-          for (const s of pulled) await store.putSong(s);
-          const byId = new Map(pulled.map((s) => [s.id, s]));
-          songs = songs.map((s) => byId.get(s.id) ?? s);
-        } catch {
-          songs = await store.listSongs();
-        }
-      }
+      const { songs, songsPerDay, day } = await topUpToday(store, deps);
       return {
         songsPerDay,
         songs: dailySelection(songs, day, songsPerDay).map((s) => ({ id: s.id, title: s.title, ratedToday: s.lastReviewed === day })),

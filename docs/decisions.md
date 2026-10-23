@@ -74,3 +74,7 @@ Manual check pending on a real iPhone: touch swipe feel (pointer capture, click 
 
 ## 2026-10-23 t015-songs-above-done: Songs section moved above Done on Today
 Order is now header, empty-due, To-do, Songs, Done, toast (swap of two children in `todayView`). Layout only: hidden Songs still uses `hidden`, so the rest is unchanged. DOM order rather than CSS `order`, to keep reading and focus order aligned.
+
+## 2026-10-23 t016-repertoire-topup: daily top-up runs from both Today and Repertoire
+`topUpToday` in `src/app/topUp.ts` is the single top-up path; Today and Repertoire call it before listing, so tab order
+never changes the selection and the next song never reads "in N days". It re-reads each song before writing dueDate.
