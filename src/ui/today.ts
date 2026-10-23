@@ -7,7 +7,7 @@ import { applyUndo, prepareUndo, type Undo } from "../today/undo";
 import { browserFeedbackEnv, createFeedback, type Feedback } from "./feedback";
 import { h } from "./h";
 import { icon } from "./icons";
-import type { TaskItem, TimerPrefs, TodayPort } from "./ports";
+import type { TaskItem, TaskSnapshot, TimerPrefs, TodayPort } from "./ports";
 import { openSheet, type Sheet } from "./sheet";
 import { attachSwipe } from "./swipe";
 import { taskColor } from "./taskColor";
@@ -51,7 +51,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   let cancelToast: (() => void) | null = null;
   let cancelTick: (() => void) | null = null;
   let disposed = false;
-  let formError = "";
+  let editing: TaskItem | null = null;
 
   const timer = new TimerController({
     now: env.now,
@@ -71,7 +71,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const errorEl = h("p", { class: "error", role: "alert" });
   const dateEl = h("p", { class: "date" });
   const summaryEl = h("p", { class: "summary" });
-  const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add task", onClick: () => openAdd() }, icon("plus"));
+  const addBtn = h("button", { type: "button", class: "add-btn", "aria-label": "Add task", onClick: () => openForm() }, icon("plus"));
   const todoEmpty = h("div", { class: "empty-card" });
   const emptyDue = h("div", { class: "empty-card" }, "No tasks due today. Tap + to add one.");
   const todoGroup = h("section", { class: "group todo" }, h("h2", { class: "group-title" }, "To do"), todoEmpty, todoList);
@@ -163,7 +163,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     task.lastCompletedOn = date;
     if (!reduceMotion()) entering.add(task.id);
     undo = prepareUndo(task.id, prev, env.now());
-    showToast("Done", true);
+    showToast("Done", () => void doUndo());
     render();
   };
 
@@ -174,10 +174,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     toast.replaceChildren();
   };
 
-  const showToast = (msg: string, withUndo = false) => {
+  /** One toast element: a new toast replaces the previous one (and its Undo). */
+  const showToast = (msg: string, onUndo?: () => void) => {
     cancelToast?.();
-    const kids = [h("span", null, withUndo ? `${msg} · ` : msg)];
-    if (withUndo) kids.push(h("button", { type: "button", class: "undo", onClick: () => void doUndo() }, "Undo"));
+    const kids = [h("span", null, onUndo ? `${msg} · ` : msg)];
+    if (onUndo) kids.push(h("button", { type: "button", class: "undo", onClick: onUndo }, "Undo"));
     toast.replaceChildren(...kids);
     cancelToast = env.after(hideToast, config.today.undoMs);
   };
@@ -193,6 +194,13 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     if (t) t.lastCompletedOn = res.value;
     if (t && !reduceMotion()) entering.add(t.id);
     if (!disposed) render();
+  };
+
+  const editBtn = (t: TaskItem): HTMLElement => {
+    const b = h("button", { type: "button", class: "edit", "data-edit": t.id, "aria-label": `Edit ${t.name}`, onClick: () => openForm(t) }, icon("pencil"));
+    // Keep the row swipe (finish) from starting on the edit button.
+    b.addEventListener("pointerdown", (e) => e.stopPropagation());
+    return b;
   };
 
   const makeRow = (t: TaskItem, today: string): HTMLElement => {
@@ -219,6 +227,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
             },
             icon(running ? "check" : "play"),
           ),
+      editBtn(t),
     );
     const li = h(
       "li",
@@ -248,7 +257,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
 
   const render = () => {
     if (disposed) return;
-    const focusId = (document.activeElement as HTMLElement | null)?.dataset?.act;
+    const activeData = (document.activeElement as HTMLElement | null)?.dataset;
+    const focusSel = activeData?.act ? `[data-act="${activeData.act}"]` : activeData?.edit ? `[data-edit="${activeData.edit}"]` : "";
     const now = new Date(env.now());
     const today = todayLocal(now);
     for (const d of rowDetach) d();
@@ -271,7 +281,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     doneToggle.setAttribute("aria-expanded", String(doneOpen));
     doneToggle.replaceChildren(`Done (${done.length})`, icon("chevron"));
     emptyDue.hidden = due.length > 0;
-    if (focusId) el.querySelector<HTMLElement>(`[data-act="${focusId}"]`)?.focus();
+    if (focusSel) el.querySelector<HTMLElement>(focusSel)?.focus();
   };
 
   const load = async () => {
@@ -297,6 +307,14 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const dailyIn = h("input", { type: "checkbox", name: "daily", id: "task-daily", checked: true });
   const dayIns = DAY_NAMES.map((d, i) => h("input", { type: "checkbox", name: "day", value: i, "aria-label": d }));
   const chip = (input: HTMLInputElement, text: string) => h("label", { class: "chip" }, input, h("span", null, text));
+  const submitBtn = h("button", { type: "submit" }, "Add");
+  const deleteBtn = h("button", { type: "button", class: "danger", onClick: () => void remove() }, "Delete");
+  const actions = h(
+    "div",
+    { class: "sheet-actions" },
+    h("button", { type: "button", class: "cancel", onClick: () => sheet?.close() }, "Cancel"),
+    submitBtn,
+  );
   const form = h(
     "form",
     {
@@ -310,21 +328,25 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     h("label", { class: "field" }, "Minutes", minsIn),
     h("fieldset", { class: "chips" }, h("legend", null, "Repeat"), chip(dailyIn, "Daily"), DAY_NAMES.map((d, i) => chip(dayIns[i]!, d))),
     errorEl,
-    h(
-      "div",
-      { class: "sheet-actions" },
-      h("button", { type: "button", class: "cancel", onClick: () => sheet?.close() }, "Cancel"),
-      h("button", { type: "submit" }, "Add"),
-    ),
+    actions,
   );
   const setError = (m: string) => {
     errorEl.textContent = m;
   };
-  const openAdd = () => {
+  /** Opens the shared sheet: empty "Add task" form, or "Edit task" pre-filled from `task`. */
+  const openForm = (task?: TaskItem) => {
     if (sheet || disposed) return;
+    editing = task ?? null;
     setError("");
-    nameIn.value = "";
-    sheet = openSheet(form, { title: "Add task", onClose: () => (sheet = null) });
+    nameIn.value = task ? task.name : "";
+    minsIn.value = String(task ? task.minutes : 10);
+    const days = task ? task.days : "daily";
+    dailyIn.checked = days === "daily";
+    dayIns.forEach((c, i) => (c.checked = days !== "daily" && days.includes(i)));
+    submitBtn.textContent = task ? "Save" : "Add";
+    deleteBtn.remove();
+    if (task) actions.insertBefore(deleteBtn, submitBtn);
+    sheet = openSheet(form, { title: task ? "Edit task" : "Add task", onClose: () => (sheet = null) });
   };
   const submit = async () => {
     const name = nameIn.value.trim();
@@ -333,13 +355,54 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       ? "daily"
       : dayIns.flatMap((c, i) => (c.checked ? [i] : []));
     if (days !== "daily" && days.length === 0) return setError("Choose Daily or at least one day");
+    const patch = { name, minutes: Number(minsIn.value), days };
     try {
-      await env.port.addTask({ name, minutes: Number(minsIn.value), days });
+      if (editing) {
+        // A running task keeps the target fixed at start (timer.ts), so a minutes change applies from the next start;
+        // the running row hides .mins via CSS, so nothing visibly changes meanwhile. A name change shows at once.
+        await env.port.updateTask(editing.id, patch);
+      } else {
+        await env.port.addTask(patch);
+      }
     } catch (e) {
-      return setError(e instanceof Error ? e.message : "Could not add task");
+      return setError(e instanceof Error ? e.message : editing ? "Could not save task" : "Could not add task");
     }
     setError("");
     sheet?.close();
+    tasks = await env.port.listTasks();
+    render();
+  };
+  const remove = async () => {
+    const task = editing;
+    if (!task) return;
+    let snap: TaskSnapshot;
+    try {
+      snap = await env.port.deleteTask(task.id);
+    } catch (e) {
+      return setError(e instanceof Error ? e.message : "Could not delete task");
+    }
+    // Undo restores the task, not its running state.
+    if (isRunning(task.id)) {
+      timer.stop();
+      stopTick();
+      env.feedback.releaseWakeLock();
+    }
+    sheet?.close();
+    // The delete toast replaces any completion toast, so completion undo is dropped.
+    undo = null;
+    showToast(`Deleted ${snap.name}`, () => void restore(snap));
+    tasks = await env.port.listTasks();
+    render();
+    addBtn.focus();
+  };
+  const restore = async (snap: TaskSnapshot) => {
+    hideToast();
+    try {
+      await env.port.restoreTask(snap);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not restore");
+      return;
+    }
     tasks = await env.port.listTasks();
     render();
   };

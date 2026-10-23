@@ -90,3 +90,33 @@ describe("todayPort", () => {
     v.dispose();
   });
 });
+
+describe("todayPort edit/delete", () => {
+  it("update preserves id, lastCompletedOn, createdAt and persists in a new port", async () => {
+    const { port, store } = setup();
+    await port.addTask({ name: "S", minutes: 5, days: [1] });
+    await port.setCompleted("id-1", "2026-10-20");
+    await port.updateTask("id-1", { name: "Scales", minutes: 12, days: "daily" });
+    const port2 = makeTodayPort(store, { newId: () => "x", nowIso: () => "2030-01-01T00:00:00+00:00", getEffectiveConfig });
+    expect(await port2.listTasks()).toEqual([
+      { id: "id-1", name: "Scales", minutes: 12, days: "daily", lastCompletedOn: "2026-10-20", createdAt: "2026-10-22T12:00:00+00:00" },
+    ]);
+  });
+  it("update rejects invalid values and missing ids", async () => {
+    const { port } = setup();
+    await port.addTask({ name: "S", minutes: 5, days: "daily" });
+    await expect(port.updateTask("id-1", { name: "S", minutes: 241, days: "daily" })).rejects.toBeInstanceOf(ValidationError);
+    await expect(port.updateTask("nope", { name: "S", minutes: 5, days: "daily" })).rejects.toThrow("Task not found");
+    await expect(port.deleteTask("nope")).rejects.toThrow("Task not found");
+  });
+  it("delete returns the full record and restore brings back the identical record", async () => {
+    const { port } = setup();
+    await port.addTask({ name: "S", minutes: 5, days: [2, 3] });
+    const before = (await port.listTasks())[0]!;
+    const snap = await port.deleteTask("id-1");
+    expect(snap).toEqual({ ...before, createdAt: "2026-10-22T12:00:00+00:00" });
+    expect(await port.listTasks()).toEqual([]);
+    await port.restoreTask(snap);
+    expect(await port.listTasks()).toEqual([snap]);
+  });
+});

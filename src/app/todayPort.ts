@@ -16,7 +16,7 @@ export interface PortDeps {
  * via getEffectiveConfig(...).timer (null settings falls back to config.timer).
  */
 export function makeTodayPort(
-  store: Pick<Store, "putTask" | "getTask" | "listTasks" | "getSettings">,
+  store: Pick<Store, "putTask" | "getTask" | "deleteTask" | "listTasks" | "getSettings">,
   deps: PortDeps,
 ): TodayPort {
   return {
@@ -31,6 +31,20 @@ export function makeTodayPort(
         createdAt: deps.nowIso(),
       };
       await store.putTask(task);
+    },
+    async updateTask(id, patch) {
+      const old = await store.getTask(id);
+      if (!old) throw new Error("Task not found");
+      await store.putTask({ ...old, name: patch.name, minutes: patch.minutes, days: patch.days });
+    },
+    async deleteTask(id) {
+      const old = await store.getTask(id);
+      if (!old) throw new Error("Task not found");
+      await store.deleteTask(id);
+      return old;
+    },
+    async restoreTask(snapshot) {
+      await store.putTask(snapshot);
     },
     async setCompleted(id, date) {
       const task = await store.getTask(id);

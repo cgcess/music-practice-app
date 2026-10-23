@@ -1,6 +1,6 @@
 const NS = "http://www.w3.org/2000/svg";
 
-export type IconName = "today" | "repertoire" | "settings" | "play" | "check" | "plus" | "chevron";
+export type IconName = "today" | "repertoire" | "settings" | "play" | "check" | "plus" | "chevron" | "pencil" | "trash";
 
 const PATHS: Record<IconName, { d: string[]; filled?: boolean }> = {
   today: { d: ["M5 5h14v15H5z", "M5 10h14", "M9 3v4", "M15 3v4"] },
@@ -10,6 +10,8 @@ const PATHS: Record<IconName, { d: string[]; filled?: boolean }> = {
   check: { d: ["M5 12.5l4.5 4.5L19 7.5"] },
   plus: { d: ["M12 5v14", "M5 12h14"] },
   chevron: { d: ["M9 6l6 6-6 6"] },
+  pencil: { d: ["M4 20l1-4L16 5l3 3L8 19z", "M14 7l3 3"] },
+  trash: { d: ["M4 7h16", "M9 7V4h6v3", "M6 7l1 13h10l1-13", "M10 11v6", "M14 11v6"] },
 };
 
 const svgEl = (tag: string, attrs: Record<string, string>): SVGElement => {

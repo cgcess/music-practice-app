@@ -20,6 +20,9 @@ export interface ViewDeps {
 const emptyPort: TodayPort = {
   listTasks: async () => [],
   addTask: async () => {},
+  updateTask: async () => {},
+  deleteTask: async (id) => ({ id, name: "", minutes: 1, days: "daily", lastCompletedOn: null, createdAt: "" }),
+  restoreTask: async () => {},
   setCompleted: async () => {},
   getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
 };

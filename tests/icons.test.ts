@@ -4,7 +4,7 @@ import { icon, type IconName } from "../src/ui/icons";
 
 describe("icons", () => {
   it("builds SVG-namespaced elements with paths", () => {
-    const names: IconName[] = ["today", "repertoire", "settings", "play", "check", "plus", "chevron"];
+    const names: IconName[] = ["today", "repertoire", "settings", "play", "check", "plus", "chevron", "pencil", "trash"];
     for (const n of names) {
       const el = icon(n);
       expect(el.namespaceURI).toBe("http://www.w3.org/2000/svg");

@@ -82,3 +82,18 @@
 
 .task.entering { animation: row-in var(--move-ms, 250ms) var(--ease); }
 @keyframes row-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.task button.edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  margin-right: calc(var(--space-2) * -1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--label-2);
+}
+.task button.edit svg { width: 20px; height: 20px; }

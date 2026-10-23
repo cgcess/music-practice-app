@@ -11,6 +11,10 @@ export interface NewTask {
   minutes: number;
   days: "daily" | number[];
 }
+/** Full stored record of a task, kept for delete-undo. Structural: the data layer's Task is assignable. */
+export interface TaskSnapshot extends TaskItem {
+  createdAt: string;
+}
 export interface TimerPrefs {
   sound: boolean;
   vibrate: boolean;
@@ -19,6 +23,11 @@ export interface TimerPrefs {
 export interface TodayPort {
   listTasks(): Promise<TaskItem[]>;
   addTask(t: NewTask): Promise<void>;
+  /** Replaces name, minutes and days of an existing task; throws "Task not found" for an unknown id. */
+  updateTask(id: string, patch: NewTask): Promise<void>;
+  /** Removes the task and returns its full record so it can be restored. */
+  deleteTask(id: string): Promise<TaskSnapshot>;
+  restoreTask(snapshot: TaskSnapshot): Promise<void>;
   setCompleted(id: string, date: string | null): Promise<void>;
   getTimerPrefs(): Promise<TimerPrefs>;
 }

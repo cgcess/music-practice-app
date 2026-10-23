@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { config } from "../src/config";
 import type { Feedback } from "../src/ui/feedback";
-import type { NewTask, TaskItem, TimerPrefs, TodayPort } from "../src/ui/ports";
+import type { NewTask, TaskItem, TaskSnapshot, TimerPrefs, TodayPort } from "../src/ui/ports";
 import { todayView, type TodayEnv } from "../src/ui/today";
 
 const MIN = 60000;
@@ -15,6 +15,9 @@ let tasks: TaskItem[];
 let prefs: TimerPrefs;
 let calls: [string, string | null][];
 let added: NewTask[];
+let updated: [string, NewTask][];
+let deleted: string[];
+let restored: TaskSnapshot[];
 let addError: Error | null;
 let tickFn: (() => void) | null;
 let tickCancelled: number;
@@ -38,6 +41,22 @@ function mk() {
     addTask: async (t) => {
       if (addError) throw addError;
       added.push(t);
+    },
+    updateTask: async (id, patch) => {
+      if (addError) throw addError;
+      updated.push([id, patch]);
+      Object.assign(tasks.find((x) => x.id === id)!, patch);
+    },
+    deleteTask: async (id) => {
+      const i = tasks.findIndex((x) => x.id === id);
+      const [t] = tasks.splice(i, 1);
+      deleted.push(id);
+      return { ...t!, createdAt: "2026-10-01T09:00:00+00:00" };
+    },
+    restoreTask: async (snap) => {
+      restored.push(snap);
+      const { createdAt: _c, ...item } = snap;
+      tasks.push(item);
     },
     setCompleted: async (id, d) => {
       calls.push([id, d]);
@@ -117,6 +136,9 @@ beforeEach(() => {
   prefs = { sound: true, vibrate: true, overtime: true };
   calls = [];
   added = [];
+  updated = [];
+  deleted = [];
+  restored = [];
   addError = null;
   tickFn = null;
   tickCancelled = 0;
@@ -136,7 +158,7 @@ describe("today view", () => {
     expect(row("b")).not.toBeNull();
     expect(row("c")).toBeNull();
     expect(row("d").classList.contains("done")).toBe(true);
-    expect(row("d").querySelector("button")).toBeNull();
+    expect(row("d").querySelector("button.act")).toBeNull();
   });
 
   it("button starts then finishes, shows countdown and writes completion", async () => {
@@ -409,7 +431,7 @@ describe("today layout", () => {
     await flush();
     expect(ids(".todo")).toEqual(["b"]);
     expect(ids(".done-group")).toEqual(["a", "d"]);
-    expect(row("a").querySelector("button")).toBeNull();
+    expect(row("a").querySelector("button.act")).toBeNull();
     expect(document.querySelector(".summary")?.textContent).toBe("2 of 3 · 5 min left");
     (document.querySelector("button.undo") as HTMLButtonElement).click();
     await flush();
@@ -452,5 +474,176 @@ describe("today layout", () => {
     r.dispatchEvent(ev("pointercancel", 30, 2));
     expect(body.style.transform).toBe("");
     expect(r.classList.contains("running")).toBe(false);
+  });
+});
+
+describe("edit and delete", () => {
+  const edit = (id: string) => row(id).querySelector("button.edit") as HTMLButtonElement;
+  const field = (sel: string) => document.querySelector(sel) as HTMLInputElement;
+  const submit = async () => {
+    document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flush();
+  };
+  const err = () => document.querySelector("[role=alert]")!.textContent;
+  const toastText = () => document.querySelector(".toast")!.textContent;
+  const del = async () => {
+    (document.querySelector("button.danger") as HTMLButtonElement).click();
+    await flush();
+  };
+  const undoBtn = () => document.querySelector(".toast button.undo") as HTMLButtonElement | null;
+
+  it("edit button opens a pre-filled Edit task sheet and Save updates the list", async () => {
+    mk();
+    await flush();
+    expect(edit("a").tagName).toBe("BUTTON");
+    expect(edit("a").getAttribute("aria-label")).toBe("Edit Scales");
+    expect(edit("d")).not.toBeNull();
+    edit("b").click();
+    expect(document.querySelector(".sheet")!.getAttribute("aria-label")).toBe("Edit task");
+    expect(field("#task-name").value).toBe("Arpeggios");
+    expect(field("#task-minutes").value).toBe("5");
+    expect(field("#task-daily").checked).toBe(false);
+    expect([...document.querySelectorAll<HTMLInputElement>("input[name=day]")].map((c) => c.checked)).toEqual([false, false, false, false, true, false, false]);
+    expect(document.querySelector("button[type=submit]")!.textContent).toBe("Save");
+    field("#task-name").value = "Broken chords";
+    field("#task-minutes").value = "7";
+    await submit();
+    expect(updated).toEqual([["b", { name: "Broken chords", minutes: 7, days: [4] }]]);
+    expect(document.querySelector(".sheet")).toBeNull();
+    expect(row("b").textContent).toContain("Broken chords");
+    expect(row("b").textContent).toContain("7 min");
+    expect(added).toEqual([]);
+  });
+  it("shows validation errors on edit and keeps the sheet open", async () => {
+    mk();
+    await flush();
+    edit("a").click();
+    field("#task-name").value = " ";
+    await submit();
+    expect(err()).toBe("Name is required");
+    field("#task-name").value = "X";
+    field("#task-daily").checked = false;
+    await submit();
+    expect(err()).toBe("Choose Daily or at least one day");
+    field("#task-daily").checked = true;
+    addError = new Error("Minutes out of range");
+    for (const m of ["0", "241"]) {
+      field("#task-minutes").value = m;
+      await submit();
+      expect(err()).toBe("Minutes out of range");
+    }
+    expect(document.querySelector(".sheet")).not.toBeNull();
+    expect(updated).toEqual([]);
+  });
+  it("Add after an edit starts from defaults", async () => {
+    mk();
+    await flush();
+    edit("b").click();
+    field("#task-name").value = "Zed";
+    field("#task-minutes").value = "33";
+    await submit();
+    (document.querySelector("button.add-btn") as HTMLButtonElement).click();
+    expect(document.querySelector(".sheet")!.getAttribute("aria-label")).toBe("Add task");
+    expect(field("#task-name").value).toBe("");
+    expect(field("#task-minutes").value).toBe("10");
+    expect(field("#task-daily").checked).toBe(true);
+    expect(document.querySelectorAll("input[name=day]:checked").length).toBe(0);
+    expect(document.querySelector("button[type=submit]")!.textContent).toBe("Add");
+    expect(document.querySelector("button.danger")).toBeNull();
+  });
+  it("traps Tab in the edit sheet; Escape and Save return focus to the edit button", async () => {
+    mk();
+    await flush();
+    edit("a").focus();
+    edit("a").click();
+    const tab = (shift = false) => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: shift, bubbles: true, cancelable: true }));
+    (document.querySelector("button[type=submit]") as HTMLElement).focus();
+    tab();
+    expect(document.activeElement).toBe(field("#task-name"));
+    tab(true);
+    expect(document.activeElement).toBe(document.querySelector("button[type=submit]"));
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(edit("a"));
+    edit("a").click();
+    await submit();
+    expect((document.activeElement as HTMLElement).dataset.edit).toBe("a");
+    expect(document.activeElement).toBe(edit("a"));
+  });
+  it("a swipe starting on the edit button does not finish the task", async () => {
+    mk();
+    await flush();
+    swipe(edit("a"), 200);
+    await flush();
+    expect(calls).toEqual([]);
+    expect(row("a").classList.contains("running")).toBe(false);
+  });
+  it("editing minutes of the running task keeps it running; target unchanged until next start", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    edit("a").click();
+    field("#task-minutes").value = "2";
+    await submit();
+    expect(row("a").classList.contains("running")).toBe(true);
+    expect(row("a").querySelector(".mins")!.textContent).toBe("2 min");
+    clock += 5 * MIN;
+    tickFn!();
+    expect(timeOf("a")).toBe("5:00"); // original 10 min target: 5 min left
+  });
+  it("delete removes the task and Undo restores the identical record without reload", async () => {
+    mk();
+    await flush();
+    edit("a").click();
+    await del();
+    expect(deleted).toEqual(["a"]);
+    expect(row("a")).toBeNull();
+    expect(document.querySelector(".sheet")).toBeNull();
+    expect(toastText()).toBe("Deleted Scales · Undo");
+    expect(document.activeElement).toBe(document.querySelector("button.add-btn"));
+    undoBtn()!.click();
+    await flush();
+    expect(restored).toEqual([{ id: "a", name: "Scales", minutes: 10, days: "daily", lastCompletedOn: null, createdAt: "2026-10-01T09:00:00+00:00" }]);
+    expect(row("a")).not.toBeNull();
+    expect(toastText()).toBe("");
+  });
+  it("delete toast expires after the undo window without restoring", async () => {
+    mk();
+    await flush();
+    edit("a").click();
+    await del();
+    toastFn!();
+    expect(toastText()).toBe("");
+    expect(undoBtn()).toBeNull();
+    expect(tasks.find((t) => t.id === "a")).toBeUndefined();
+    expect(restored).toEqual([]);
+  });
+  it("delete after complete leaves only the delete toast; its Undo restores, not setCompleted", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    btn("a").click();
+    await flush();
+    expect(toastText()).toBe("Done · Undo");
+    const callsBefore = calls.length;
+    edit("a").click();
+    await del();
+    expect(toastText()).toBe("Deleted Scales · Undo");
+    expect(document.querySelectorAll(".toast button.undo").length).toBe(1);
+    undoBtn()!.click();
+    await flush();
+    expect(restored.length).toBe(1);
+    expect(calls.length).toBe(callsBefore);
+  });
+  it("deleting the running task stops the timer and releases the wake lock", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    expect(wake).toEqual(["acquire"]);
+    edit("a").click();
+    await del();
+    expect(wake).toEqual(["acquire", "release"]);
+    expect(tickFn).toBeNull();
+    clock += 11 * MIN;
+    expect(chimes).toBe(0);
   });
 });
