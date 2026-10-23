@@ -42,6 +42,11 @@ const task = (id: string, name: string, minutes: number, days: TaskItem["days"] 
   lastCompletedOn: last,
 });
 
+// Song seam stubs; tests/todaySongs.test.ts exercises these through its own port.
+const songState = async (): Promise<{ songsPerDay: number; songs: { id: string; title: string; ratedToday: boolean }[] }> => ({ songsPerDay: 0, songs: [] });
+const rateStub = async (id: string, _r: string) => ({ id, title: "", dueDate: "2026-10-23", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" });
+const restoreStub = (_s: unknown) => {};
+
 function mk() {
   const port: TodayPort = {
     listTasks: async () => tasks.map((t) => ({ ...t })),
@@ -77,6 +82,11 @@ function mk() {
     setTempo: async (b) => {
       tempo = b;
       tempoSaves.push(b);
+    },
+    listTodaySongs: async () => songState(),
+    rateTodaySong: async (id, rating) => rateStub(id, rating),
+    restoreTodaySong: async (snap) => {
+      restoreStub(snap);
     },
   };
   const feedback: Feedback = {

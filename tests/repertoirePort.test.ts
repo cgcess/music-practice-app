@@ -90,3 +90,31 @@ describe("repertoirePort", () => {
     });
   });
 });
+
+describe("repertoirePort add-time due rule (t014)", () => {
+  it("first songsPerDay adds to an empty repertoire are due today; later ones are due tomorrow or later", async () => {
+    const { port, store } = setup();
+    await port.setSongsPerDay(2);
+    await port.addSongs(["A", "B", "C", "D", "E"]);
+    const due = Object.fromEntries((await store.listSongs()).map((s) => [s.title, s.dueDate]));
+    expect(due.A).toBe("2026-10-23");
+    expect(due.B).toBe("2026-10-23");
+    for (const t of ["C", "D", "E"]) expect(due[t]! > "2026-10-23").toBe(true);
+  });
+  it("single adds on an empty-start day are due today up to songsPerDay, then wait", async () => {
+    const { port, store } = setup();
+    await port.setSongsPerDay(2);
+    for (const t of ["A", "B", "C"]) await port.addSong(t);
+    const due = Object.fromEntries((await store.listSongs()).map((s) => [s.title, s.dueDate]));
+    expect(due.A).toBe("2026-10-23");
+    expect(due.B).toBe("2026-10-23");
+    expect(due.C! > "2026-10-23").toBe(true);
+  });
+  it("a song added to a non-empty repertoire is never due today", async () => {
+    const { port, store } = setup();
+    await store.putSong(song({ id: "old", dueDate: "2026-11-30" }));
+    await port.addSong("New");
+    const added = (await store.listSongs()).find((s) => s.title === "New")!;
+    expect(added.dueDate > "2026-10-23").toBe(true);
+  });
+});

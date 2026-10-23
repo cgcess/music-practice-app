@@ -3,7 +3,7 @@ import { config } from "../src/config";
 import { addDays, diffDays } from "../src/dates";
 import { validateSong } from "../src/data/schema";
 import { fnv1a32, rand01 } from "../src/sr/hash";
-import { dailySelection, newSong, pickOrder, rateSong, type Rating } from "../src/sr/scheduler";
+import { dailySelection, newSong, pickOrder, planTopUp, rateSong, type Rating } from "../src/sr/scheduler";
 import { song } from "./helpers";
 
 const sr = config.sr;
@@ -195,5 +195,60 @@ describe("pickOrder and dailySelection", () => {
   it("lowering songsPerDay drops from the end only", () => {
     const songs = ["a", "b", "c", "d"].map((id) => due(id, "2026-10-20"));
     expect(dailySelection(songs, TODAY, 3).slice(0, 2)).toEqual(dailySelection(songs, TODAY, 2));
+  });
+});
+
+describe("planTopUp and cap rule (t014)", () => {
+  const ids = (l: { id: string }[]) => l.map((s) => s.id);
+  const fut = (id: string, dueDate: string, extra = {}) => song({ id, dueDate, lastReviewed: null, createdAt: "2026-10-01T09:00:00+00:00", ...extra });
+  it("pulls the soonest-due future songs, only as many as are missing", () => {
+    const songs = [fut("a", "2026-10-28"), fut("b", "2026-10-25"), fut("c", "2026-10-26"), fut("d", "2026-10-23")];
+    expect(ids(planTopUp(songs, TODAY, 3))).toEqual(["b", "c"]);
+    expect(ids(planTopUp(songs, TODAY, 1))).toEqual([]);
+  });
+  it("is a no-op when rated + due already fill songsPerDay, or songsPerDay is 0", () => {
+    const songs = [fut("a", "2026-10-20"), fut("b", "2026-10-21"), fut("c", "2026-10-30")];
+    expect(planTopUp(songs, TODAY, 2)).toEqual([]);
+    expect(planTopUp(songs, TODAY, 0)).toEqual([]);
+  });
+  it("counts songs rated today and never pulls them", () => {
+    const rated = fut("r", "2026-10-29", { lastReviewed: TODAY });
+    const songs = [rated, fut("a", "2026-10-25"), fut("b", "2026-10-26")];
+    expect(ids(planTopUp(songs, TODAY, 2))).toEqual(["a"]);
+  });
+  it("skips songs created today when something is due, includes them when nothing is", () => {
+    const fresh = fut("n", "2026-10-24", { createdAt: "2026-10-23T09:00:00+00:00" });
+    const old = fut("o", "2026-10-27");
+    const dueOne = fut("d", "2026-10-22");
+    expect(ids(planTopUp([fresh, old, dueOne], TODAY, 3))).toEqual(["o"]);
+    expect(ids(planTopUp([fresh, old], TODAY, 2))).toEqual(["n", "o"]);
+  });
+  it("created-today uses the local date of createdAt, not a string slice", () => {
+    const offset = (-new Date("2026-10-23T12:00:00").getTimezoneOffset());
+    const sign = offset >= 0 ? "+" : "-";
+    const hh = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
+    const mm = String(Math.abs(offset) % 60).padStart(2, "0");
+    const local = `2026-10-23T00:30:00${sign}${hh}:${mm}`;
+    const fresh = fut("n", "2026-10-24", { createdAt: local });
+    expect(ids(planTopUp([fresh, fut("d", "2026-10-22")], TODAY, 2))).toEqual([]);
+  });
+  it("keeps every rated row when songsPerDay drops below the rated count; unrated fill max(0, spd - rated)", () => {
+    const rated = ["r1", "r2", "r3"].map((id) => fut(id, "2026-10-29", { lastReviewed: TODAY }));
+    const due = ["a", "b"].map((id) => fut(id, "2026-10-20"));
+    const songs = [...rated, ...due];
+    expect(dailySelection(songs, TODAY, 2)).toHaveLength(3);
+    expect(dailySelection(songs, TODAY, 2).every((s) => s.lastReviewed === TODAY)).toBe(true);
+    expect(dailySelection(songs, TODAY, 4)).toHaveLength(4);
+    expect(dailySelection(songs, TODAY, 99)).toHaveLength(5);
+    expect(dailySelection(songs, TODAY, 0)).toEqual([]);
+  });
+  it("newSong minOffset: default range unchanged, minOffset 1 never gives today", () => {
+    for (let i = 0; i < 200; i++) {
+      const init = { id: `x${i}`, title: "T", createdAt: "2026-10-23T09:00:00+00:00" };
+      const d = diffDays(newSong(init, TODAY, sr, { minOffset: 1 }).dueDate, TODAY);
+      expect(d >= 1 && d <= sr.newSongSpreadDays).toBe(true);
+    }
+    const init = { id: "y", title: "T", createdAt: "2026-10-23T09:00:00+00:00" };
+    expect(newSong(init, TODAY)).toEqual(newSong(init, TODAY, sr, { minOffset: 0 }));
   });
 });

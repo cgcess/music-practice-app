@@ -30,6 +30,9 @@ const emptyPort: TodayPort = {
   getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
   getTempo: async () => config.metronome.defaultBpm,
   setTempo: async () => {},
+  listTodaySongs: async () => ({ songsPerDay: config.songsPerDay, songs: [] }),
+  rateTodaySong: async (id) => ({ id, title: "", dueDate: "1970-01-01", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" }),
+  restoreTodaySong: async () => {},
 };
 
 const emptyRepertoire: RepertoirePort = {

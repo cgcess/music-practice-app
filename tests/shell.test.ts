@@ -103,6 +103,9 @@ describe("shell", () => {
         getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
         getTempo: async () => 100,
         setTempo: async () => {},
+        listTodaySongs: async () => ({ songsPerDay: 0, songs: [] }),
+        rateTodaySong: async (id) => ({ id, title: "", dueDate: "2026-10-23", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" }),
+        restoreTodaySong: async () => {},
       },
       todayEnv: {
         port: {
@@ -115,6 +118,9 @@ describe("shell", () => {
           getTimerPrefs: async () => ({ sound: true, vibrate: true, overtime: true }),
           getTempo: async () => 100,
           setTempo: async () => {},
+          listTodaySongs: async () => ({ songsPerDay: 0, songs: [] }),
+          rateTodaySong: async (id) => ({ id, title: "", dueDate: "2026-10-23", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" }),
+          restoreTodaySong: async () => {},
         },
         now: () => Date.now(),
         feedback: {

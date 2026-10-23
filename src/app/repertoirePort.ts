@@ -17,7 +17,27 @@ export function makeRepertoirePort(
   deps: PortDeps,
 ): RepertoirePort {
   const today = () => (deps.today ?? todayLocal)();
-  const create = (title: string): Song => newSong({ id: deps.newId(), title, createdAt: deps.nowIso() }, today());
+  const create = (title: string, minOffset: number): Song =>
+    newSong({ id: deps.newId(), title, createdAt: deps.nowIso() }, today(), config.sr, { minOffset });
+  /**
+   * Add-time rule (first-day rule): if every existing song was created today, a new song is due today while
+   * fewer than songsPerDay such songs are already due today; otherwise it is due tomorrow or later, so it never
+   * displaces a shown song. Single and bulk adds behave the same.
+   */
+  const planner = async () => {
+    const existing = await store.listSongs();
+    const day = today();
+    const freshStart = existing.every((s) => todayLocal(new Date(s.createdAt)) === day);
+    const spd = deps.getEffectiveConfig(await store.getSettings()).songsPerDay;
+    let dueToday = existing.filter((s) => s.dueDate === day).length;
+    return (title: string): Song => {
+      if (freshStart && dueToday < spd) {
+        dueToday++;
+        return { ...create(title, 0), dueDate: day };
+      }
+      return create(title, 1);
+    };
+  };
 
   return {
     async listSongs() {
@@ -53,10 +73,11 @@ export function makeRepertoirePort(
     async addSong(title) {
       const t = title.trim();
       if (!t) throw new Error("Title is required");
-      await store.putSong(create(t));
+      await store.putSong((await planner())(t));
     },
     async addSongs(titles) {
       const seen = new Set((await store.listSongs()).map((s) => key(s.title)));
+      const make = await planner();
       let added = 0;
       let skipped = 0;
       for (const raw of titles) {
@@ -67,7 +88,7 @@ export function makeRepertoirePort(
           continue;
         }
         seen.add(key(t));
-        await store.putSong(create(t));
+        await store.putSong(make(t));
         added++;
       }
       return { added, skipped };

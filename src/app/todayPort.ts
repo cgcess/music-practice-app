@@ -1,6 +1,8 @@
 import type { Store } from "../data/store";
 import type { Config } from "../config";
+import { todayLocal } from "../dates";
 import type { Settings, Task } from "../data/schema";
+import { dailySelection, planTopUp, rateSong } from "../sr/scheduler";
 import type { TodayPort } from "../ui/ports";
 
 export interface PortDeps {
@@ -18,9 +20,10 @@ export interface PortDeps {
  * via getEffectiveConfig(...).timer (null settings falls back to config.timer).
  */
 export function makeTodayPort(
-  store: Pick<Store, "putTask" | "getTask" | "deleteTask" | "listTasks" | "getSettings" | "putSettings">,
+  store: Pick<Store, "putTask" | "getTask" | "deleteTask" | "listTasks" | "getSettings" | "putSettings" | "listSongs" | "getSong" | "putSong">,
   deps: PortDeps,
 ): TodayPort {
+  const today = () => (deps.today ?? todayLocal)();
   return {
     listTasks: () => store.listTasks(),
     async addTask(t) {
@@ -72,6 +75,38 @@ export function makeTodayPort(
         metronomeBpm: eff.metronome.bpm,
       };
       await store.putSettings({ ...base, metronomeBpm: bpm });
+    },
+    async listTodaySongs() {
+      const day = today();
+      const songsPerDay = deps.getEffectiveConfig(await store.getSettings()).songsPerDay;
+      let songs = await store.listSongs();
+      const pulled = planTopUp(songs, day, songsPerDay).map((s) => ({ ...s, dueDate: day }));
+      if (pulled.length > 0) {
+        // Persisting the pulled-ahead dueDate keeps the selection stable across reloads. A failed write
+        // must not break the view: fall back to the unmodified list.
+        try {
+          for (const s of pulled) await store.putSong(s);
+          const byId = new Map(pulled.map((s) => [s.id, s]));
+          songs = songs.map((s) => byId.get(s.id) ?? s);
+        } catch {
+          songs = await store.listSongs();
+        }
+      }
+      return {
+        songsPerDay,
+        songs: dailySelection(songs, day, songsPerDay).map((s) => ({ id: s.id, title: s.title, ratedToday: s.lastReviewed === day })),
+      };
+    },
+    async rateTodaySong(id, rating) {
+      const day = today();
+      const old = await store.getSong(id);
+      if (!old) throw new Error("Song not found");
+      if (old.lastReviewed === day) throw new Error("Already rated today");
+      await store.putSong(rateSong(old, rating, day));
+      return old;
+    },
+    async restoreTodaySong(snapshot) {
+      await store.putSong(snapshot);
     },
   };
 }

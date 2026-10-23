@@ -20,6 +20,13 @@ export interface TimerPrefs {
   vibrate: boolean;
   overtime: boolean;
 }
+export type SongRating = "rough" | "ok" | "solid";
+/** One slot of the day's songs. `ratedToday` rows are done for the day. */
+export interface TodaySong {
+  id: string;
+  title: string;
+  ratedToday: boolean;
+}
 export interface TodayPort {
   listTasks(): Promise<TaskItem[]>;
   addTask(t: NewTask): Promise<void>;
@@ -34,6 +41,11 @@ export interface TodayPort {
   getTempo(): Promise<number>;
   /** Persists the tempo; rejects with a validation error when out of range. */
   setTempo(bpm: number): Promise<void>;
+  /** The day's songs (rated today first, then the next to play) and the songsPerDay setting. */
+  listTodaySongs(): Promise<{ songsPerDay: number; songs: TodaySong[] }>;
+  /** Applies the scheduler and returns the previous record for Undo; rejects when already rated today. */
+  rateTodaySong(id: string, rating: SongRating): Promise<SongSnapshot>;
+  restoreTodaySong(snapshot: SongSnapshot): Promise<void>;
 }
 
 /** Repertoire tab port (see src/app/repertoirePort.ts). */

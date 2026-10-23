@@ -5,6 +5,9 @@ import { makeTodayPort } from "../src/app/todayPort";
 import { config, getEffectiveConfig } from "../src/config";
 import { ValidationError } from "../src/data/schema";
 import { Store } from "../src/data/store";
+import { dueText } from "../src/sr/dueText";
+import { makeRepertoirePort } from "../src/app/repertoirePort";
+import { song } from "./helpers";
 import { todayView, type TodayEnv } from "../src/ui/today";
 
 let n = 0;
@@ -134,5 +137,145 @@ describe("todayPort edit/delete", () => {
     expect(await port.listTasks()).toEqual([]);
     await port.restoreTask(snap);
     expect(await port.listTasks()).toEqual([snap]);
+  });
+});
+
+describe("todayPort songs (t014)", () => {
+  const DAY = "2026-10-23";
+  const mkSongs = (spd = 3) => {
+    const store = new Store(`todaysongs-${++n}-${Math.random()}`);
+    const d = { newId: () => "x", nowIso: () => "2026-10-23T12:00:00+00:00", getEffectiveConfig, today: () => DAY };
+    return { store, d, port: makeTodayPort(store, d), spd, repo: makeRepertoirePort(store, d) };
+  };
+  const put = async (store: Store, spd: number, ...songs: ReturnType<typeof song>[]) => {
+    await store.putSettings({ ...settingsRec, songsPerDay: spd });
+    for (const s of songs) await store.putSong(s);
+  };
+  const settingsRec = { songsPerDay: 3, suggestionPeriod: "daily" as const, timerSound: true, timerVibrate: false, timerOvertime: true, metronomeBpm: 100 };
+  const fut = (id: string, dueDate: string, o = {}) => song({ id, dueDate, lastReviewed: null, ...o });
+
+  it("top-up persists dueDate = today, reload gives the same list, dueText reads today", async () => {
+    const { store, port, d } = mkSongs();
+    await put(store, 3, fut("a", "2026-10-25"), fut("b", "2026-10-27"), fut("c", "2026-11-20"));
+    const first = await port.listTodaySongs();
+    expect(first.songs.map((s) => s.id).sort()).toEqual(["a", "b", "c"]);
+    const stored = await store.listSongs();
+    expect(stored.every((s) => s.dueDate === DAY)).toBe(true);
+    const second = await makeTodayPort(store, d).listTodaySongs();
+    expect(second).toEqual(first);
+    expect(dueText(stored[0]!.dueDate, DAY)).toBe("today");
+  });
+  it("fewer due than songsPerDay gives a non-empty selection", async () => {
+    const { store, port } = mkSongs();
+    await put(store, 3, fut("a", "2026-10-30"));
+    const r = await port.listTodaySongs();
+    expect(r.songs.map((s) => s.id)).toEqual(["a"]);
+    expect((await store.getSong("a"))!.dueDate).toBe(DAY);
+  });
+  it("songsPerDay 0 returns no songs and writes nothing", async () => {
+    const { store, port } = mkSongs();
+    await put(store, 0, fut("a", "2026-10-30"));
+    expect((await port.listTodaySongs()).songs).toEqual([]);
+    expect((await store.getSong("a"))!.dueDate).toBe("2026-10-30");
+  });
+  it("an unrated shown song is still shown the next day", async () => {
+    const { store, d } = mkSongs();
+    await put(store, 1, fut("a", "2026-10-20"), fut("b", "2026-10-21"));
+    const day1 = await makeTodayPort(store, d).listTodaySongs();
+    const day2 = await makeTodayPort(store, { ...d, today: () => "2026-10-24" }).listTodaySongs();
+    expect(day2.songs.map((s) => s.id)).toEqual(day1.songs.map((s) => s.id));
+  });
+  it("rates via the validator, returns the exact previous record, and restore round-trips", async () => {
+    const { store, port } = mkSongs();
+    await put(store, 3, fut("a", "2026-10-20"));
+    const before = (await store.getSong("a"))!;
+    const snap = await port.rateTodaySong("a", "solid");
+    expect(snap).toEqual(before);
+    const after = (await store.getSong("a"))!;
+    expect(after.lastReviewed).toBe(DAY);
+    expect(after.dueDate > DAY).toBe(true);
+    expect((await port.listTodaySongs()).songs).toEqual([{ id: "a", title: "Etude", ratedToday: true }]);
+    await port.restoreTodaySong(snap);
+    expect(await store.getSong("a")).toEqual(before);
+    await expect(port.rateTodaySong("nope", "ok")).rejects.toThrow("Song not found");
+  });
+  it("a second rating of the same song rejects and leaves the record unchanged", async () => {
+    const { store, port } = mkSongs();
+    await put(store, 3, fut("a", "2026-10-20"));
+    await port.rateTodaySong("a", "ok");
+    const rated = (await store.getSong("a"))!;
+    await expect(port.rateTodaySong("a", "rough")).rejects.toThrow();
+    expect(await store.getSong("a")).toEqual(rated);
+  });
+  it("lowering songsPerDay below the rated count keeps all rated rows", async () => {
+    const { store, port } = mkSongs();
+    await put(store, 3, fut("a", "2026-10-20"), fut("b", "2026-10-20"), fut("c", "2026-10-20"), fut("e", "2026-10-20"));
+    for (const id of ["a", "b", "c"]) await port.rateTodaySong(id, "ok");
+    await store.putSettings({ ...settingsRec, songsPerDay: 1 });
+    const r = await port.listTodaySongs();
+    expect(r.songs.filter((s) => s.ratedToday)).toHaveLength(3);
+    expect(r.songs).toHaveLength(3);
+  });
+  it("a rejecting putSong during top-up still returns the unmodified selection", async () => {
+    const { store, d } = mkSongs();
+    await put(store, 3, fut("a", "2026-10-20"), fut("b", "2026-10-26"));
+    const failing = Object.create(store) as Store;
+    failing.putSong = async () => {
+      throw new Error("disk full");
+    };
+    const r = await makeTodayPort(failing, d).listTodaySongs();
+    expect(r.songs.map((s) => s.id)).toEqual(["a"]);
+    expect((await store.getSong("b"))!.dueDate).toBe("2026-10-26");
+  });
+  it("add-time rule: first songsPerDay adds to an empty repertoire are due today and fill the selection", async () => {
+    const { store, port, d } = mkSongs();
+    await store.putSettings({ ...settingsRec, songsPerDay: 2 });
+    let k = 0;
+    const repo = makeRepertoirePort(store, { ...d, newId: () => `n${++k}` });
+    const res = await repo.addSongs(["A", "B", "C", "D"]);
+    expect(res.added).toBe(4);
+    const all = await store.listSongs();
+    expect(all.filter((s) => s.dueDate === DAY).map((s) => s.title).sort()).toEqual(["A", "B"]);
+    expect(all.filter((s) => s.title === "C" || s.title === "D").every((s) => s.dueDate > DAY)).toBe(true);
+    expect((await port.listTodaySongs()).songs.map((s) => s.title).sort()).toEqual(["A", "B"]);
+  });
+  it("case A: B added while the selection is still empty (before Today opens) has offset >= 1 and competes by due date", async () => {
+    const { store, port, repo } = mkSongs();
+    await put(store, 1, fut("a", "2026-10-26"));
+    await repo.addSong("B");
+    const b = (await store.listSongs()).find((s) => s.title === "B")!;
+    expect(b.dueDate > DAY).toBe(true);
+    const soonest = [await store.getSong("a"), b].sort((x, y) => (x!.dueDate < y!.dueDate ? -1 : 1))[0]!;
+    const r = await port.listTodaySongs();
+    expect(r.songs.map((s) => s.id)).toEqual([soonest.id]);
+  });
+  it("case B: A topped up first, then B added: B is not shown that day", async () => {
+    const { store, port, repo } = mkSongs();
+    await put(store, 1, fut("a", "2026-10-26"));
+    expect((await port.listTodaySongs()).songs.map((s) => s.id)).toEqual(["a"]);
+    await repo.addSong("B");
+    expect((await port.listTodaySongs()).songs.map((s) => s.id)).toEqual(["a"]);
+  });
+  it("first day: one-at-a-time adds fill up to songsPerDay, including after Today was listed", async () => {
+    const { store, d } = mkSongs();
+    await store.putSettings({ ...settingsRec, songsPerDay: 2 });
+    let k = 0;
+    const dd = { ...d, newId: () => `n${++k}` };
+    const repo = makeRepertoirePort(store, dd);
+    const port = makeTodayPort(store, dd);
+    await repo.addSong("A");
+    expect((await port.listTodaySongs()).songs.map((s) => s.title)).toEqual(["A"]);
+    await repo.addSong("B");
+    expect((await port.listTodaySongs()).songs.map((s) => s.title).sort()).toEqual(["A", "B"]);
+    await repo.addSong("C");
+    expect((await port.listTodaySongs()).songs.map((s) => s.title).sort()).toEqual(["A", "B"]);
+  });
+  it("later day: a song added after the selection is non-empty is not shown that day", async () => {
+    const { store, port, repo } = mkSongs();
+    await store.putSettings({ ...settingsRec, songsPerDay: 2 });
+    await put(store, 2, fut("a", "2026-10-26"));
+    expect((await port.listTodaySongs()).songs.map((s) => s.id)).toEqual(["a"]);
+    await repo.addSong("B");
+    expect((await port.listTodaySongs()).songs.map((s) => s.id)).toEqual(["a"]);
   });
 });

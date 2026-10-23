@@ -8,9 +8,10 @@ import { browserFeedbackEnv, createFeedback, type Feedback } from "./feedback";
 import { h } from "./h";
 import { browserMetronomeEnv, createMetronomePanel, type MetronomeEnv } from "./metronome";
 import { icon } from "./icons";
-import type { TaskItem, TaskSnapshot, TimerPrefs, TodayPort } from "./ports";
+import type { SongRating, SongSnapshot, TaskItem, TaskSnapshot, TimerPrefs, TodayPort, TodaySong } from "./ports";
 import { openSheet, type Sheet } from "./sheet";
 import { attachSwipe } from "./swipe";
+import { attachSwipeReveal } from "./swipeReveal";
 import { taskColor } from "./taskColor";
 
 export interface TodayEnv {
@@ -57,6 +58,12 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   let editing: TaskItem | null = null;
   let editMode = false;
   let deleting = false;
+  let songs: TodaySong[] = [];
+  let songsPerDay = 0;
+  /** Rating labels live in memory only; after a reload a rated row reads "Rated". */
+  const songRatings = new Map<string, SongRating>();
+  let openSong: string | null = null;
+  let songRowDetach: (() => void)[] = [];
 
   const timer = new TimerController({
     now: env.now,
@@ -84,6 +91,11 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const todoGroup = h("section", { class: "group todo" }, h("h2", { class: "group-title" }, "To do"), todoEmpty, todoList);
   const doneToggle = h("button", { type: "button", class: "group-toggle", "aria-expanded": "true", onClick: () => toggleDone() });
   const doneGroup = h("section", { class: "group done-group" }, h("h2", { class: "group-title" }, doneToggle), doneList);
+  const songList = h("ul", { class: "song-list inset-list" });
+  const songEmpty = h("div", { class: "empty-card" }, "Nothing to play today");
+  const songDone = h("p", { class: "songs-done" }, "All done for today");
+  const songSection = h("section", { class: "group songs" }, h("h2", { class: "group-title" }, "Songs"), songDone, songEmpty, songList);
+  songSection.hidden = true;
   const el = h(
     "section",
     { class: "today" },
@@ -91,6 +103,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     emptyDue,
     todoGroup,
     doneGroup,
+    songSection,
     toast,
   );
   el.style.setProperty("--move-ms", `${config.today.moveMs}ms`);
@@ -314,7 +327,137 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     doneToggle.replaceChildren(`Done (${done.length})`, icon("chevron"));
     emptyDue.hidden = due.length > 0;
     if (focusSel) el.querySelector<HTMLElement>(focusSel)?.focus();
+    renderSongs();
   };
+
+  const setOpenSong = (id: string | null) => {
+    if (openSong === id) return;
+    openSong = id;
+    renderSongs();
+  };
+
+  const makeSongRow = (s: TodaySong): HTMLElement => {
+    const interactive = !s.ratedToday && !editMode;
+    const open = interactive && openSong === s.id;
+    const label = songRatings.get(s.id) ?? "Rated";
+    const cls = "song" + (s.ratedToday ? " rated" : "") + (open ? " open" : "") + (editMode ? " editing" : "");
+    const toggle = () => setOpenSong(openSong === s.id ? null : s.id);
+    const bodyAttrs = interactive
+      ? {
+          class: "row-body",
+          role: "button",
+          tabindex: "0",
+          "aria-expanded": String(open),
+          "data-song-body": s.id,
+          onClick: toggle,
+          onKeydown: (ev: Event) => {
+            const e = ev as KeyboardEvent;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              toggle();
+            }
+          },
+        }
+      : s.ratedToday
+        ? { class: "row-body", role: "button", "aria-disabled": "true" }
+        : { class: "row-body" };
+    const body = h("div", bodyAttrs, h("span", { class: "name" }, s.title), s.ratedToday ? h("span", { class: "status" }, label) : null);
+    if (!interactive) return h("li", { class: cls, "data-song": s.id }, body);
+    const actions = h(
+      "div",
+      { class: "song-actions" },
+      config.sr.ratingScale.map((r) =>
+        h("button", { type: "button", class: `rate rate-${r}`, "aria-label": `Rate ${s.title} ${r}`, onClick: () => void rateSongRow(s.id, r) }, r),
+      ),
+    );
+    const li = h("li", { class: cls, "data-song": s.id }, actions, body);
+    songRowDetach.push(
+      attachSwipeReveal(li, {
+        onMove: (dx) => {
+          if (openSong === s.id) return;
+          li.classList.add("dragging");
+          li.style.setProperty("--drag", `${Math.min(0, dx)}px`);
+        },
+        onEnd: () => {
+          li.classList.remove("dragging");
+          li.style.removeProperty("--drag");
+        },
+        onOpen: () => setOpenSong(s.id),
+        onClose: () => {
+          if (openSong === s.id) setOpenSong(null);
+        },
+      }),
+    );
+    return li;
+  };
+
+  const renderSongs = () => {
+    if (disposed) return;
+    const focusId = (document.activeElement as HTMLElement | null)?.dataset?.songBody;
+    for (const d of songRowDetach) d();
+    songRowDetach = [];
+    if (editMode) openSong = null;
+    songSection.hidden = songsPerDay <= 0;
+    songEmpty.hidden = songs.length > 0;
+    songDone.hidden = !(songs.length > 0 && songs.every((x) => x.ratedToday));
+    songList.hidden = songs.length === 0;
+    songList.replaceChildren(...songs.map(makeSongRow));
+    if (focusId) el.querySelector<HTMLElement>(`[data-song-body="${focusId}"]`)?.focus();
+  };
+
+  const loadSongs = async () => {
+    try {
+      const r = await env.port.listTodaySongs();
+      songs = r.songs;
+      songsPerDay = r.songsPerDay;
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not load songs");
+    }
+    renderSongs();
+  };
+
+  const rateSongRow = async (id: string, rating: SongRating) => {
+    const s = songs.find((x) => x.id === id);
+    if (!s || s.ratedToday) return;
+    let snap: SongSnapshot;
+    try {
+      snap = await env.port.rateTodaySong(id, rating);
+    } catch (e) {
+      openSong = null;
+      showToast(e instanceof Error ? e.message : "Could not save rating");
+      await loadSongs();
+      return;
+    }
+    songRatings.set(id, rating);
+    s.ratedToday = true;
+    openSong = null;
+    // One toast: this replaces a pending task toast (and its Undo button).
+    showToast(`Rated ${s.title} ${rating}`, () => void undoRating(id, snap));
+    renderSongs();
+  };
+
+  const undoRating = async (id: string, snap: SongSnapshot) => {
+    hideToast();
+    try {
+      await env.port.restoreTodaySong(snap);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Could not restore");
+      return;
+    }
+    songRatings.delete(id);
+    const s = songs.find((x) => x.id === id);
+    if (s) s.ratedToday = false;
+    renderSongs();
+  };
+
+  // A tap outside the open row closes it; taps on other interactive song rows are left to that row.
+  const onDocPointerDown = (e: Event) => {
+    if (openSong === null) return;
+    const li = (e.target as Element | null)?.closest?.("li.song");
+    if (li && !li.classList.contains("rated")) return;
+    setOpenSong(null);
+  };
+  document.addEventListener("pointerdown", onDocPointerDown);
 
   const load = async () => {
     try {
@@ -446,7 +589,9 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   };
 
   detach.push(env.onVisible(updateTimes));
+  detach.push(() => document.removeEventListener("pointerdown", onDocPointerDown));
   void load();
+  void loadSongs();
 
   return {
     el,
@@ -458,6 +603,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       cancelToast?.();
       for (const d of detach) d();
       for (const d of rowDetach) d();
+      for (const d of songRowDetach) d();
       env.feedback.releaseWakeLock();
       env.feedback.dispose();
     },
