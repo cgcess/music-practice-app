@@ -27,6 +27,8 @@ let tickFn: (() => void) | null;
 let tickCancelled: number;
 let toastFn: (() => void) | null;
 let chimes: number;
+let chimePrefs: TimerPrefs[] = [];
+let prefsError: Error | null = null;
 let wake: string[];
 let disposedFb: number;
 let tempo = 100;
@@ -77,7 +79,10 @@ function mk(timer?: SharedTimer) {
       const t = tasks.find((x) => x.id === id)!;
       t.lastCompletedOn = d;
     },
-    getTimerPrefs: async () => prefs,
+    getTimerPrefs: async () => {
+      if (prefsError) throw prefsError;
+      return prefs;
+    },
     getTempo: async () => tempo,
     repertoireStrength: async () => ({ well: 0, okay: 0, poorly: 0, fresh: 0 }),
     setTempo: async (b) => {
@@ -92,8 +97,9 @@ function mk(timer?: SharedTimer) {
   };
   const feedback: Feedback = {
     prime() {},
-    chime: () => {
+    chime: (p) => {
       chimes++;
+      chimePrefs.push(p);
     },
     acquireWakeLock: () => {
       wake.push("acquire");
@@ -179,6 +185,8 @@ beforeEach(() => {
   tickCancelled = 0;
   toastFn = null;
   chimes = 0;
+  chimePrefs = [];
+  prefsError = null;
   wake = [];
   disposedFb = 0;
 });
@@ -386,6 +394,22 @@ describe("add form", () => {
     await submit();
     expect(added).toEqual([{ name: "Long tones", minutes: 12, days: "daily" }]);
     expect(document.querySelector(".sheet")).toBeNull();
+    openSheet();
+    expect(err()).toBe("");
+  });
+  it("default timer prefs hold only sound, vibrate and overtime (no min/max keys)", async () => {
+    prefsError = new Error("offline");
+    mk();
+    await flush();
+    // The failed load leaves default prefs; adding a task reloads the list only.
+    openSheet();
+    fill("Long tones", "12");
+    await submit();
+    btn("b").click();
+    clock += 5 * MIN;
+    tickFn!();
+    expect(chimePrefs).toHaveLength(1);
+    expect(Object.keys(chimePrefs[0]!).sort()).toEqual(["overtime", "sound", "vibrate"]);
   });
   it("submits chosen weekdays when Daily is unchecked", async () => {
     mk();

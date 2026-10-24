@@ -65,6 +65,10 @@ export const config = {
     chimeHz: 880,
     chimeMs: 300,
     chimeBeeps: 3,
+    /** Chime volume (0..1). */
+    chimeGain: 0.3,
+    /** Default length for a new task, in minutes. */
+    defaultMinutes: 10,
     vibrateMs: 300,
     /** Fade/collapse when a row moves between To do and Done. */
     moveMs: 250,

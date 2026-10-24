@@ -49,7 +49,7 @@ export function createTaskForm(opts: TaskFormOpts): TaskForm {
     inputmode: "numeric",
     min: config.timer.minMinutes,
     max: config.timer.maxMinutes,
-    value: 10,
+    value: config.today.defaultMinutes,
   });
   const dailyIn = h("input", { type: "checkbox", name: "daily", id: "task-daily", checked: true });
   const dayIns = DAY_NAMES.map((d, i) => h("input", { type: "checkbox", name: "day", value: i, "aria-label": d }));
@@ -88,7 +88,7 @@ export function createTaskForm(opts: TaskFormOpts): TaskForm {
     deleteBtn.disabled = false;
     setError("");
     nameIn.value = task ? task.name : "";
-    minsIn.value = String(task ? task.minutes : 10);
+    minsIn.value = String(task ? task.minutes : config.today.defaultMinutes);
     const days = task ? task.days : "daily";
     dailyIn.checked = days === "daily";
     dayIns.forEach((c, i) => (c.checked = days !== "daily" && days.includes(i)));

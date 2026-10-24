@@ -39,6 +39,6 @@ describe("theme color", () => {
     expect(html).toContain("__THEME_COLOR_LIGHT__");
     expect(html).toContain("__THEME_COLOR_DARK__");
     expect(html).toContain("viewport-fit=cover");
-    expect(html).not.toMatch(/#[0-9a-f]{6}/i);
+    expect(html).not.toMatch(/#(?:[0-9a-f]{3}|[0-9a-f]{6})\b/i);
   });
 });

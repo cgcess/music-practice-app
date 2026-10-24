@@ -64,7 +64,7 @@ export function createFeedback(env: FeedbackEnv): Feedback {
     if (!env.wakeLock) return;
     try {
       const s = await env.wakeLock.request("screen");
-      if (!wanted) {
+      if (!wanted || sentinel) {
         void s.release().catch(() => {});
         return;
       }
@@ -102,7 +102,7 @@ export function createFeedback(env: FeedbackEnv): Feedback {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.frequency.value = config.today.chimeHz;
-            gain.gain.value = 0.3;
+            gain.gain.value = config.today.chimeGain;
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start(t0 + i * len * 2);

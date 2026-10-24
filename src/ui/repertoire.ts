@@ -188,7 +188,9 @@ export function repertoireView(
             }
             sheet?.close();
             await reload();
-            showToast(res.error ? `Added ${res.added} before an error: ${res.error}` : `Added ${res.added}, skipped ${res.skipped}`);
+            showToast(
+              res.error ? `Added ${res.added} before an error: ${res.error}` : `Added ${res.added}, skipped ${res.skipped}`,
+            );
           })();
         },
       },

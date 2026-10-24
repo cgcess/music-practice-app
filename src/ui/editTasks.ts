@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { h } from "./h";
 import { icon } from "./icons";
+import { isActive } from "../today/timer";
 import { browserFeedbackEnv, createFeedback, type Feedback } from "./feedback";
 import type { TaskItem, TodayPort } from "./ports";
 import { createTaskForm, formatDays } from "./taskForm";
@@ -95,13 +96,17 @@ export function editTasksView(env: EditTasksEnv): { el: HTMLElement; dispose: ()
     list.hidden = sorted.length === 0;
     empty.hidden = sorted.length > 0;
   };
-  const reload = async () => {
+  /** Returns false when the load failed; `quiet` skips the error toast. */
+  const reload = async (quiet = false): Promise<boolean> => {
+    let ok = true;
     try {
       tasks = await env.port.listTasks();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Could not load tasks");
+      ok = false;
+      if (!quiet) showToast(e instanceof Error ? e.message : "Could not load tasks");
     }
     render();
+    return ok;
   };
 
   const releaseWakeLock = () => {
@@ -111,20 +116,24 @@ export function editTasksView(env: EditTasksEnv): { el: HTMLElement; dispose: ()
 
   const form = createTaskForm({
     port: env.port,
-    onChanged: reload,
+    onChanged: async () => void (await reload()),
     onDeleting: (task) => {
       const s = env.timer?.controller.snapshot();
-      if (s && s.taskId === task.id && (s.phase === "running" || s.phase === "overtime" || s.phase === "timesup")) {
+      if (s && s.taskId === task.id && isActive(s)) {
         env.timer!.controller.stop();
         releaseWakeLock();
       }
     },
     onDeleted: async (snap) => {
+      const ok = await reload(true);
+      if (!ok) {
+        tasks = tasks.filter((t) => t.id !== snap.id);
+        render();
+      }
       showToast(`Deleted ${snap.name}`, () => {
         hideToast();
         void form.restore(snap);
       });
-      await reload();
       addBtn.focus();
     },
     returnFocus: (task) => (task ? rowFor(task.id) : addBtn)?.focus(),

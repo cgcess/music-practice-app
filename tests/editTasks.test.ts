@@ -309,6 +309,23 @@ describe("edit page", () => {
     await flush();
     expect(deleteCalls).toBe(1);
   });
+  it("keeps the Undo toast and drops the row when the reload after delete fails", async () => {
+    const { env } = mountPage();
+    await flush();
+    const real = env.port.listTasks;
+    let calls = 0;
+    env.port.listTasks = async () => {
+      calls++;
+      if (calls > 0) throw new Error("reload failed");
+      return real();
+    };
+    edit("a").click();
+    await del();
+    await flush();
+    expect(undoBtn()).not.toBeNull();
+    expect(toastText()).toBe("Deleted Scales · Undo");
+    expect(row("a")).toBeNull();
+  });
   it("failed delete re-enables the button, allows retry and shows the error", async () => {
     deleteError = new Error("disk full");
     mountPage();

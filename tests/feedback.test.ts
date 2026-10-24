@@ -123,4 +123,32 @@ describe("feedback", () => {
     await flush();
     expect(log.locks[0]!.released).toBe(true);
   });
+  for (const order of [[0, 1], [1, 0]]) {
+    it(`releases every sentinel when requests resolve out of step (order ${order.join(",")})`, async () => {
+      const resolvers: (() => void)[] = [];
+      const released: number[] = [];
+      let n = 0;
+      const { env } = setup({
+        wakeLock: {
+          request: () => {
+            const id = n++;
+            return new Promise((res) => {
+              resolvers[id] = () => res({ release: async () => void released.push(id) });
+            });
+          },
+        },
+      });
+      const fb = createFeedback(env);
+      fb.acquireWakeLock();
+      fb.releaseWakeLock();
+      fb.acquireWakeLock();
+      for (const i of order) {
+        resolvers[i]?.();
+        await flush();
+      }
+      fb.releaseWakeLock();
+      await flush();
+      expect(released.sort()).toEqual([0, 1]);
+    });
+  }
 });

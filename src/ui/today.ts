@@ -3,7 +3,7 @@ import { todayLocal } from "../dates";
 import { isDoneToday, isDueToday } from "../today/due";
 import { dayProgress } from "../today/progress";
 import { formatDate, formatSummary, summarize } from "../today/summary";
-import { TimerController, formatOvertime, formatRemaining } from "../today/timer";
+import { TimerController, formatOvertime, formatRemaining, isActive } from "../today/timer";
 import { applyUndo, prepareUndo, type Undo } from "../today/undo";
 import { browserFeedbackEnv, createFeedback, type Feedback } from "./feedback";
 import { h } from "./h";
@@ -68,7 +68,7 @@ export function defaultTodayEnv(port: TodayPort): TodayEnv {
 
 export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void } {
   let tasks: TaskItem[] = [];
-  let prefs: TimerPrefs = { ...config.timer };
+  let prefs: TimerPrefs = { sound: config.timer.sound, vibrate: config.timer.vibrate, overtime: config.timer.overtime };
   let undo: Undo | null = null;
   let cancelToast: (() => void) | null = null;
   let cancelTick: (() => void) | null = null;
@@ -159,7 +159,7 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
 
   const isRunning = (id: string) => {
     const s = timer.snapshot();
-    return s.taskId === id && (s.phase === "running" || s.phase === "overtime" || s.phase === "timesup");
+    return s.taskId === id && isActive(s);
   };
 
   const overtimeNow = () => {
@@ -232,11 +232,13 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
     try {
       await env.port.setCompleted(task.id, date);
     } catch (e) {
+      if (disposed) return;
       showToast(e instanceof Error ? e.message : "Could not save");
       render();
       return;
     }
     task.lastCompletedOn = date;
+    if (disposed) return;
     if (!reduceMotion()) {
       entering.add(task.id);
       popTasks.add(task.id);

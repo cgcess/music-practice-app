@@ -22,6 +22,11 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const mmss = (totalSec: number) => `${Math.floor(totalSec / 60)}:${pad(totalSec % 60)}`;
 
 /** Countdown label, rounding up so 0:00 only shows at the target. */
+/** True while a task is being timed (running, overtime or time-up). */
+export function isActive(s: Snapshot): boolean {
+  return s.phase === "running" || s.phase === "overtime" || s.phase === "timesup";
+}
+
 export function formatRemaining(ms: number): string {
   return mmss(Math.ceil(Math.max(0, ms) / 1000));
 }
