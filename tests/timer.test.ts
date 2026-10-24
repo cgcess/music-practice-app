@@ -115,3 +115,84 @@ describe("formatting", () => {
     expect(formatOvertime(61_999)).toBe("+1:01");
   });
 });
+
+describe("TimerController pause", () => {
+  it("snapshot has the full shape including paused", () => {
+    const c = mk();
+    expect(c.snapshot()).toEqual({ phase: "idle", taskId: null, remainingMs: 0, overtimeMs: 0, paused: false });
+    c.start("a", 5 * MIN);
+    t += MIN;
+    expect(c.snapshot()).toEqual({ phase: "running", taskId: "a", remainingMs: 4 * MIN, overtimeMs: 0, paused: false });
+    c.done();
+    expect(c.snapshot()).toEqual({ phase: "done", taskId: "a", remainingMs: 0, overtimeMs: 0, paused: false });
+  });
+  it("freezes elapsed while paused and continues after resume", () => {
+    const c = mk();
+    c.start("a", 5 * MIN);
+    t += MIN;
+    c.pause();
+    t += 60 * MIN;
+    const s = c.snapshot();
+    expect(s.paused).toBe(true);
+    expect(s.remainingMs).toBe(4 * MIN);
+    c.resume();
+    expect(c.snapshot()).toMatchObject({ paused: false, remainingMs: 4 * MIN });
+    t += MIN;
+    expect(c.snapshot().remainingMs).toBe(3 * MIN);
+  });
+  it("overtime excludes the paused interval", () => {
+    const c = mk();
+    c.start("a", MIN);
+    t += MIN + 5000;
+    c.pause();
+    t += 10 * MIN;
+    expect(c.snapshot()).toMatchObject({ phase: "overtime", overtimeMs: 5000, paused: true });
+    c.resume();
+    t += 1000;
+    expect(c.snapshot().overtimeMs).toBe(6000);
+  });
+  it("does not chime while paused past the target; chimes when effective elapsed reaches it", () => {
+    const c = mk();
+    c.start("a", MIN);
+    t += 30_000;
+    c.pause();
+    t += 5 * MIN;
+    c.tick();
+    expect(chimes).toEqual([]);
+    c.resume();
+    c.tick();
+    expect(chimes).toEqual([]);
+    t += 30_000;
+    c.tick();
+    expect(chimes).toEqual(["a"]);
+  });
+  it("pause and resume are no-ops when idle, done, or repeated", () => {
+    const c = mk();
+    c.pause();
+    c.resume();
+    expect(c.snapshot().paused).toBe(false);
+    c.start("a", 5 * MIN);
+    c.resume();
+    t += MIN;
+    c.pause();
+    t += MIN;
+    c.pause();
+    t += MIN;
+    expect(c.snapshot().remainingMs).toBe(4 * MIN);
+    c.resume();
+    c.resume();
+    expect(c.snapshot().remainingMs).toBe(4 * MIN);
+    c.done();
+    c.pause();
+    expect(c.snapshot()).toMatchObject({ phase: "done", paused: false });
+  });
+  it("start while paused clears the pause; done while paused returns the id", () => {
+    const c = mk();
+    c.start("a", 5 * MIN);
+    c.pause();
+    c.start("b", 5 * MIN);
+    expect(c.snapshot()).toMatchObject({ taskId: "b", paused: false });
+    c.pause();
+    expect(c.done()).toBe("b");
+  });
+});

@@ -339,6 +339,17 @@ describe("edit page", () => {
     clock += 11 * MIN;
     expect(timer.controller.snapshot().phase).toBe("idle");
   });
+  it("deleting a paused task stops the shared timer and releases the wake lock", async () => {
+    const timer = createSharedTimer(() => clock);
+    timer.controller.start("a", 10 * MIN);
+    timer.controller.pause();
+    mountPage(timer);
+    await flush();
+    edit("a").click();
+    await del();
+    expect(timer.controller.snapshot()).toMatchObject({ phase: "idle", paused: false });
+    expect(wake).toEqual(["release"]);
+  });
   it("deleting another task leaves the running timer alone", async () => {
     const timer = createSharedTimer(() => clock);
     timer.controller.start("a", 10 * MIN);

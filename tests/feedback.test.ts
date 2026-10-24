@@ -101,6 +101,20 @@ describe("feedback", () => {
     await flush();
     expect(log.locks).toHaveLength(2);
   });
+  it("pause/resume/finish leaves no held wake lock (acquire, release, acquire, release)", async () => {
+    const { env, log } = setup();
+    const f = createFeedback(env);
+    f.acquireWakeLock();
+    await flush();
+    f.releaseWakeLock();
+    await flush();
+    f.acquireWakeLock();
+    await flush();
+    f.releaseWakeLock();
+    await flush();
+    expect(log.locks).toHaveLength(2);
+    expect(log.locks.every((l) => l.released)).toBe(true);
+  });
   it("releases a lock that resolves after release was requested", async () => {
     const { env, log } = setup();
     const f = createFeedback(env);

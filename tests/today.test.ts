@@ -4,7 +4,7 @@ import { config } from "../src/config";
 import type { MetronomeEnv } from "../src/ui/metronome";
 import type { Feedback } from "../src/ui/feedback";
 import type { NewTask, TaskItem, TaskSnapshot, TimerPrefs, TodayPort } from "../src/ui/ports";
-import { todayView, type TodayEnv } from "../src/ui/today";
+import { createSharedTimer, todayView, type SharedTimer, type TodayEnv } from "../src/ui/today";
 
 const MIN = 60000;
 const flush = async () => {
@@ -47,7 +47,7 @@ const songState = async (): Promise<{ songsPerDay: number; songs: { id: string; 
 const rateStub = async (id: string, _r: string) => ({ id, title: "", dueDate: "2026-10-23", ease: 2.5, intervalDays: 1, lastReviewed: null, createdAt: "" });
 const restoreStub = (_s: unknown) => {};
 
-function mk() {
+function mk(timer?: SharedTimer) {
   const port: TodayPort = {
     listTasks: async () => tasks.map((t) => ({ ...t })),
     addTask: async (t) => {
@@ -125,6 +125,7 @@ function mk() {
     },
     onVisible: () => () => {},
     metronome: metroEnv,
+    ...(timer ? { timer } : {}),
   };
   const v = todayView(env);
   views.push(v);
@@ -143,6 +144,7 @@ const swipe = (el: Element, dx: number, dy = 0) => {
 };
 const row = (id: string) => document.querySelector(`li[data-id="${id}"]`) as HTMLElement;
 const btn = (id: string) => row(id).querySelector("button.act") as HTMLButtonElement;
+const pauseBtn = (id: string) => row(id).querySelector("button.pause") as HTMLButtonElement | null;
 const timeOf = (id: string) => row(id).querySelector(".time")!.textContent;
 
 afterEach(() => {
@@ -627,5 +629,154 @@ describe("metronome on Today", () => {
     await flush();
     (document.querySelector(".metro-step:last-of-type") as HTMLButtonElement).click();
     expect(tempoSaves).toEqual([101]);
+  });
+});
+
+describe("pause and resume", () => {
+  it("pause button exists only on the running row", async () => {
+    mk();
+    await flush();
+    expect(pauseBtn("a")).toBeNull();
+    btn("a").click();
+    expect(pauseBtn("a")).not.toBeNull();
+    expect(pauseBtn("b")).toBeNull();
+  });
+
+  it("pausing freezes the text, marks the row and toggles the label; tick stops and lock is released", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    clock += 3 * MIN;
+    tickFn!();
+    pauseBtn("a")!.click();
+    expect(timeOf("a")).toBe("Paused 7:00");
+    expect(row("a").classList.contains("paused")).toBe(true);
+    expect(pauseBtn("a")!.getAttribute("aria-label")).toBe("Resume Scales");
+    expect(tickFn).toBeNull();
+    expect(tickCancelled).toBe(1);
+    expect(wake).toEqual(["acquire", "release"]);
+    clock += 30 * MIN;
+    expect(timeOf("a")).toBe("Paused 7:00");
+    expect(chimes).toBe(0);
+  });
+
+  it("resume re-acquires the lock, restarts ticking and continues the countdown", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    clock += 3 * MIN;
+    pauseBtn("a")!.click();
+    clock += 30 * MIN;
+    pauseBtn("a")!.click();
+    expect(wake).toEqual(["acquire", "release", "acquire"]);
+    expect(tickFn).not.toBeNull();
+    expect(row("a").classList.contains("paused")).toBe(false);
+    expect(timeOf("a")).toBe("7:00");
+    expect(pauseBtn("a")!.getAttribute("aria-label")).toBe("Pause Scales");
+    clock += MIN;
+    tickFn!();
+    expect(timeOf("a")).toBe("6:00");
+  });
+
+  it("a row paused in overtime has no overtime class; resume restores it", async () => {
+    mk();
+    await flush();
+    btn("b").click();
+    clock += 5 * MIN + 65_000;
+    tickFn!();
+    expect(row("b").classList.contains("overtime")).toBe(true);
+    pauseBtn("b")!.click();
+    expect(timeOf("b")).toBe("Paused +1:05");
+    expect(row("b").classList.contains("overtime")).toBe(false);
+    pauseBtn("b")!.click();
+    expect(timeOf("b")).toBe("+1:05");
+    expect(row("b").classList.contains("overtime")).toBe(true);
+  });
+
+  it("focus stays on the pause button after pause and after resume", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    pauseBtn("a")!.focus();
+    pauseBtn("a")!.click();
+    expect(document.activeElement).toBe(pauseBtn("a"));
+    expect(document.activeElement!.getAttribute("aria-label")).toBe("Resume Scales");
+    pauseBtn("a")!.click();
+    expect(document.activeElement).toBe(pauseBtn("a"));
+    expect(document.activeElement!.getAttribute("aria-label")).toBe("Pause Scales");
+  });
+
+  it("chime fires on resume only when effective elapsed reaches the target", async () => {
+    mk();
+    await flush();
+    btn("b").click();
+    clock += 4 * MIN;
+    pauseBtn("b")!.click();
+    clock += 20 * MIN;
+    pauseBtn("b")!.click();
+    tickFn!();
+    expect(chimes).toBe(0);
+    clock += MIN;
+    tickFn!();
+    expect(chimes).toBe(1);
+  });
+
+  it("the act button and a swipe finish a paused task", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    pauseBtn("a")!.click();
+    btn("a").click();
+    await flush();
+    expect(calls).toEqual([["a", "2026-10-22"]]);
+    expect(wake[wake.length - 1]).toBe("release");
+    expect(row("a").classList.contains("done")).toBe(true);
+
+    btn("b").click();
+    pauseBtn("b")!.click();
+    swipe(row("b"), 120, 5);
+    await flush();
+    expect(calls).toEqual([["a", "2026-10-22"], ["b", "2026-10-22"]]);
+    expect(row("b").classList.contains("done")).toBe(true);
+  });
+
+  it("starting another task while paused leaves one running row and no paused row", async () => {
+    mk();
+    await flush();
+    btn("a").click();
+    pauseBtn("a")!.click();
+    btn("b").click();
+    expect(row("a").classList.contains("running")).toBe(false);
+    expect(row("b").classList.contains("running")).toBe(true);
+    expect(document.querySelectorAll("li.paused")).toHaveLength(0);
+    expect(tickFn).not.toBeNull();
+  });
+
+  it("pause state survives remount: paused has no tick or lock, resumed has both", async () => {
+    const shared = createSharedTimer(() => clock);
+    const v1 = mk(shared);
+    await flush();
+    btn("a").click();
+    clock += MIN;
+    pauseBtn("a")!.click();
+    v1.dispose();
+    wake = [];
+    tickFn = null;
+    mk(shared);
+    await flush();
+    expect(timeOf("a")).toBe("Paused 9:00");
+    expect(tickFn).toBeNull();
+    expect(wake).toEqual([]);
+    pauseBtn("a")!.click();
+    expect(wake).toEqual(["acquire"]);
+    expect(tickFn).not.toBeNull();
+    views.pop()!.dispose();
+    wake = [];
+    tickFn = null;
+    mk(shared);
+    await flush();
+    expect(timeOf("a")).toBe("9:00");
+    expect(tickFn).not.toBeNull();
+    expect(wake).toEqual(["acquire"]);
   });
 });

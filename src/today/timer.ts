@@ -14,6 +14,8 @@ export interface Snapshot {
   remainingMs: number;
   /** Milliseconds past the target (overtime), 0 otherwise. */
   overtimeMs: number;
+  /** True while the running timer is paused (phase stays as frozen). */
+  paused: boolean;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -28,7 +30,7 @@ export function formatOvertime(ms: number): string {
 }
 
 export class TimerController {
-  private cur: { taskId: string; startMs: number; targetMs: number; chimed: boolean } | null = null;
+  private cur: { taskId: string; startMs: number; targetMs: number; chimed: boolean; pausedAt: number | null } | null = null;
   private finished: string | null = null;
 
   constructor(private readonly d: TimerDeps) {}
@@ -36,7 +38,21 @@ export class TimerController {
   /** Starts a timer, replacing any current one without completing it. */
   start(taskId: string, targetMs: number): void {
     this.finished = null;
-    this.cur = { taskId, startMs: this.d.now(), targetMs, chimed: false };
+    this.cur = { taskId, startMs: this.d.now(), targetMs, chimed: false, pausedAt: null };
+  }
+
+  /** Freezes elapsed time. No-op when nothing is running or already paused. */
+  pause(): void {
+    if (!this.cur || this.cur.pausedAt !== null) return;
+    this.cur.pausedAt = this.d.now();
+  }
+
+  /** Resumes a paused timer, excluding the paused interval from elapsed time. */
+  resume(): void {
+    const c = this.cur;
+    if (!c || c.pausedAt === null) return;
+    c.startMs += this.d.now() - c.pausedAt;
+    c.pausedAt = null;
   }
 
   /** Stops the running timer without completing. */
@@ -57,7 +73,7 @@ export class TimerController {
   /** Chime once per start; late ticks (beyond the grace window) mark it chimed without chiming. */
   tick(): void {
     const c = this.cur;
-    if (!c || c.chimed) return;
+    if (!c || c.chimed || c.pausedAt !== null) return;
     const over = this.d.now() - c.startMs - c.targetMs;
     if (over < 0) return;
     c.chimed = true;
@@ -67,13 +83,14 @@ export class TimerController {
   snapshot(): Snapshot {
     const c = this.cur;
     if (!c) {
-      return { phase: this.finished ? "done" : "idle", taskId: this.finished, remainingMs: 0, overtimeMs: 0 };
+      return { phase: this.finished ? "done" : "idle", taskId: this.finished, remainingMs: 0, overtimeMs: 0, paused: false };
     }
-    const elapsed = this.d.now() - c.startMs;
+    const paused = c.pausedAt !== null;
+    const elapsed = (c.pausedAt ?? this.d.now()) - c.startMs;
     if (elapsed < c.targetMs) {
-      return { phase: "running", taskId: c.taskId, remainingMs: c.targetMs - elapsed, overtimeMs: 0 };
+      return { phase: "running", taskId: c.taskId, remainingMs: c.targetMs - elapsed, overtimeMs: 0, paused };
     }
     const phase: Phase = this.d.overtime() ? "overtime" : "timesup";
-    return { phase, taskId: c.taskId, remainingMs: 0, overtimeMs: phase === "overtime" ? elapsed - c.targetMs : 0 };
+    return { phase, taskId: c.taskId, remainingMs: 0, overtimeMs: phase === "overtime" ? elapsed - c.targetMs : 0, paused };
   }
 }

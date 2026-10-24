@@ -65,3 +65,11 @@ describe("base.css", () => {
     expect(leaving).toContain("position: fixed");
   });
 });
+
+describe("today.css paused row", () => {
+  const today = readFileSync("src/ui/today.css", "utf8");
+  it("keeps .time on one line and shrinks it when paused", () => {
+    expect(/\.task \.time \{[^}]*white-space: nowrap/.test(today)).toBe(true);
+    expect(/\.task\.paused \.time \{[^}]*font-size/.test(today)).toBe(true);
+  });
+});

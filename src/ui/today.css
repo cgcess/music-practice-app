@@ -99,7 +99,7 @@
 .task .swipe-bg svg { width: 24px; height: 24px; }
 .task .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .task .mins, .task .status { color: var(--label-2); font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
-.task .time { font-family: var(--font-rounded); min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.task .time { white-space: nowrap; font-family: var(--font-rounded); min-width: 5ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
 .task .time:empty { display: none; }
 .task.running .mins { display: none; }
 .task.running .row-body { background: var(--row-running); }
@@ -109,7 +109,7 @@
 .task.done .status { color: var(--success-text); font-weight: 600; }
 .task .status.pop, .song .status.pop { display: inline-block; animation: pop 500ms var(--spring); }
 @keyframes pop { from { transform: scale(0.6); } to { transform: scale(1); } }
-.task button.act {
+.task button.act, .task button.pause {
   flex: none;
   display: grid;
   place-items: center;
@@ -124,7 +124,10 @@
   color: var(--accent);
 }
 .task.running button.act { background: var(--accent); color: var(--on-accent); }
-.task button.act svg { width: 20px; height: 20px; }
+.task button.pause { margin-right: 8px; }
+.task.running button.pause { background: var(--accent-tint); color: var(--accent); }
+.task button.act svg, .task button.pause svg { width: 20px; height: 20px; }
+.task.paused .time { font-size: 0.9em; }
 
 .task.entering { animation: row-in var(--move-ms, 250ms) var(--ease); }
 @keyframes row-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }

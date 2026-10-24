@@ -163,15 +163,16 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   };
 
   const overtimeNow = () => {
-    const p = timer.snapshot().phase;
-    return p === "overtime" || p === "timesup";
+    const sn = timer.snapshot();
+    return !sn.paused && (sn.phase === "overtime" || sn.phase === "timesup");
   };
 
   const timeText = (): string => {
     const s = timer.snapshot();
-    if (s.phase === "running") return formatRemaining(s.remainingMs);
-    if (s.phase === "overtime") return formatOvertime(s.overtimeMs);
-    if (s.phase === "timesup") return "0:00 time up";
+    const pre = s.paused ? "Paused " : "";
+    if (s.phase === "running") return pre + formatRemaining(s.remainingMs);
+    if (s.phase === "overtime") return pre + formatOvertime(s.overtimeMs);
+    if (s.phase === "timesup") return pre + "0:00 time up";
     return "";
   };
 
@@ -198,6 +199,19 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const act = (task: TaskItem) => {
     if (isRunning(task.id)) void finish(task);
     else if (!isDoneToday(task, todayLocal(new Date(env.now())))) start(task);
+  };
+
+  const togglePause = () => {
+    if (timer.snapshot().paused) {
+      timer.resume();
+      startTick();
+      env.feedback.acquireWakeLock();
+    } else {
+      timer.pause();
+      stopTick();
+      env.feedback.releaseWakeLock();
+    }
+    render();
   };
 
   const start = (task: TaskItem) => {
@@ -277,7 +291,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   const makeRow = (t: TaskItem, today: string): HTMLElement => {
     const done = isDoneToday(t, today);
     const running = isRunning(t.id);
-    const cls = "task" + (done ? " done" : "") + (running ? " running" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : "");
+    const paused = running && timer.snapshot().paused;
+    const cls = "task" + (done ? " done" : "") + (running ? " running" : "") + (paused ? " paused" : "") + (running && overtimeNow() ? " overtime" : "") + (entering.has(t.id) ? " entering" : "");
     const common = [
       h("span", { class: "name" }, t.name),
       h("span", { class: "mins" }, `${t.minutes} min`),
@@ -288,6 +303,19 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
       "div",
       { class: "row-body" },
       ...common,
+      done || !running
+        ? null
+        : h(
+            "button",
+            {
+              type: "button",
+              class: "pause",
+              "data-pause": t.id,
+              "aria-label": (paused ? "Resume " : "Pause ") + t.name,
+              onClick: togglePause,
+            },
+            icon(paused ? "play" : "pause"),
+          ),
       done
         ? h("span", { class: "status" + (popTasks.has(t.id) ? " pop" : "") }, "✓ done")
         : h(
@@ -325,8 +353,8 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
 
   const render = () => {
     if (disposed) return;
-    const activeAct = (document.activeElement as HTMLElement | null)?.dataset?.act;
-    const focusSel = activeAct ? `[data-act="${activeAct}"]` : "";
+    const activeEl = (document.activeElement as HTMLElement | null)?.dataset;
+    const focusSel = activeEl?.act ? `[data-act="${activeEl.act}"]` : activeEl?.pause ? `[data-pause="${activeEl.pause}"]` : "";
     const now = new Date(env.now());
     const today = todayLocal(now);
     for (const d of rowDetach) d();
@@ -552,8 +580,10 @@ export function todayView(env: TodayEnv): { el: HTMLElement; dispose: () => void
   detach.push(env.onVisible(updateTimes));
   // Back from the edit page with a timer still running: resume ticking and the wake lock; a due chime fires only within grace.
   if (["running", "overtime", "timesup"].includes(timer.snapshot().phase)) {
-    startTick();
-    env.feedback.acquireWakeLock();
+    if (!timer.snapshot().paused) {
+      startTick();
+      env.feedback.acquireWakeLock();
+    }
     resumed = true;
   }
   detach.push(() => document.removeEventListener("pointerdown", onDocPointerDown));
