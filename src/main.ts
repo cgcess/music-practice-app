@@ -1,5 +1,6 @@
 import { log } from "./log";
 import { registerServiceWorker, requestPersistence } from "./pwa";
+import { makeBackupPort } from "./app/backupPort";
 import { makeRepertoirePort } from "./app/repertoirePort";
 import { makeTodayPort } from "./app/todayPort";
 import { getEffectiveConfig } from "./config";
@@ -17,7 +18,7 @@ if (app) {
   const deps = { newId, nowIso: () => nowIso(), getEffectiveConfig };
   const today = makeTodayPort(store, deps);
   const repertoire = makeRepertoirePort(store, deps);
-  mountShell(app, { today, repertoire });
+  mountShell(app, { today, repertoire, backup: makeBackupPort(store) });
 }
 
 void requestPersistence(navigator.storage);

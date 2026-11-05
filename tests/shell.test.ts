@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BackupPort } from "../src/ui/ports";
+import { createSharedTimer, type TodayEnv } from "../src/ui/today";
 import { mountShell } from "../src/ui/shell";
-import { routes } from "../src/ui/views";
+import { defaultDeps, routes } from "../src/ui/views";
 
 let unsub: (() => void) | null = null;
 
@@ -148,5 +150,70 @@ describe("shell", () => {
     expect(disposed).toBe(0);
     await nav("#/settings");
     expect(disposed).toBe(1);
+  });
+});
+
+describe("settings route", () => {
+  it("renders Save and Load backup controls instead of the placeholder", async () => {
+    mount();
+    await nav("#/settings");
+    expect(document.querySelector("main")?.textContent).not.toContain("Nothing here yet.");
+    expect(document.querySelector("main")?.textContent).toContain("Save backup");
+    expect(document.querySelector("main")?.textContent).toContain("Load backup");
+  });
+});
+
+describe("import stops the timer", () => {
+  const backup: BackupPort = {
+    prepareExport: async () => ({ fileName: "f.json", text: "{}", tasks: 0, songs: 0 }),
+    inspect: async () => ({ tasks: 1, songs: 1, hasSettings: true }),
+    current: async () => ({ tasks: 0, songs: 0 }),
+    importBackup: async () => {},
+  };
+  const flush = async () => {
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  async function importWith(act: (t: ReturnType<typeof createSharedTimer>) => void) {
+    const hashes: string[] = [];
+    const release = vi.fn(() => void hashes.push(location.hash));
+    const timer = createSharedTimer(() => 1000);
+    const todayEnv = {
+      port: defaultDeps.today,
+      now: () => 1000,
+      feedback: { prime() {}, chime() {}, acquireWakeLock() {}, releaseWakeLock: release, dispose() {} },
+      every: () => () => {},
+      after: () => () => {},
+      onVisible: () => () => {},
+      timer,
+    } as unknown as TodayEnv;
+    act(timer);
+    unsub = mountShell(document.body, { today: defaultDeps.today, backup, todayEnv });
+    await nav("#/settings");
+    const f = new File(["{}"], "b.json");
+    const input = document.querySelector<HTMLInputElement>("input[type=file]")!;
+    Object.defineProperty(input, "files", { value: [f], configurable: true });
+    input.dispatchEvent(new Event("change"));
+    await flush();
+    const before = release.mock.calls.length;
+    [...document.querySelectorAll("button")].find((b) => b.textContent === "Replace")!.click();
+    await flush();
+    // onImported runs before the hash moves to Today, so a release seen while still on Settings is ours.
+    return { releases: hashes.slice(before).filter((h) => h === "#/settings").length, timer };
+  }
+  it("stops a running timer and releases the wake lock", async () => {
+    const { releases, timer } = await importWith((t) => t.controller.start("t1", 60_000));
+    expect(timer.controller.snapshot().phase).toBe("idle");
+    expect(releases).toBe(1);
+    expect(location.hash).toBe("#/today");
+  });
+  it("stops a paused timer and releases the wake lock", async () => {
+    const { releases, timer } = await importWith((t) => {
+      t.controller.start("t1", 60_000);
+      t.controller.pause();
+    });
+    expect(timer.controller.snapshot().phase).toBe("idle");
+    expect(timer.controller.snapshot().paused).toBe(false);
+    expect(releases).toBe(1);
   });
 });

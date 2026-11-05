@@ -140,8 +140,8 @@ export class Store {
     };
   }
 
-  /** Validate and migrate the whole file first; only then replace data in one transaction. */
-  async importBackup(json: string): Promise<void> {
+  /** Parse, migrate and validate a whole backup file; throws ValidationError, writes nothing. */
+  private parseBackup(json: string): BackupData {
     let parsed: unknown;
     try {
       parsed = JSON.parse(json);
@@ -167,6 +167,19 @@ export class Store {
     const tasks = d.tasks.map(validateTask);
     const songs = d.songs.map(validateSong);
     const settings = d.settings == null ? null : validateSettings(d.settings);
+
+    return { tasks, songs, settings };
+  }
+
+  /** Validate a backup file without writing; returns what it contains. */
+  inspectBackup(json: string): { tasks: number; songs: number; hasSettings: boolean } {
+    const d = this.parseBackup(json);
+    return { tasks: d.tasks.length, songs: d.songs.length, hasSettings: d.settings !== null };
+  }
+
+  /** Validate and migrate the whole file first; only then replace data in one transaction. */
+  async importBackup(json: string): Promise<void> {
+    const { tasks, songs, settings } = this.parseBackup(json);
 
     const tx = (await this.db()).transaction(["tasks", "songs", "settings"], "readwrite");
     tx.objectStore("tasks").clear();

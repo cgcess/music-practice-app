@@ -1,10 +1,13 @@
 import { config } from "../config";
 import { h } from "./h";
 import type { IconName } from "./icons";
-import type { RepertoirePort, TodayPort } from "./ports";
+import { isActive } from "../today/timer";
+import { browserFeedbackEnv, createFeedback } from "./feedback";
+import type { BackupPort, RepertoirePort, TodayPort } from "./ports";
 import type { Route } from "./router";
 import { repertoireView } from "./repertoire";
 import { editTasksView } from "./editTasks";
+import { browserSettingsEnv, settingsView } from "./settings";
 import { createSharedTimer, defaultTodayEnv, todayView, type TodayEnv } from "./today";
 
 export interface ViewResult {
@@ -17,6 +20,7 @@ export type View = (params: Record<string, string>) => ViewResult;
 export interface ViewDeps {
   today: TodayPort;
   repertoire?: RepertoirePort;
+  backup?: BackupPort;
   /** Test seam: full Today environment (clock, timers, feedback). */
   todayEnv?: TodayEnv;
 }
@@ -51,6 +55,15 @@ const emptyRepertoire: RepertoirePort = {
   repertoireStrength: async () => ({ well: 0, okay: 0, poorly: 0, fresh: 0 }),
 };
 
+const emptyBackup: BackupPort = {
+  prepareExport: async () => ({ fileName: "music-practice-backup.json", text: "{}", tasks: 0, songs: 0 }),
+  inspect: async () => ({ tasks: 0, songs: 0, hasSettings: false }),
+  current: async () => ({ tasks: 0, songs: 0 }),
+  importBackup: async () => {
+    throw new Error("No backup port");
+  },
+};
+
 const titled = (title: string, body: string): HTMLElement =>
   h(
     "section",
@@ -59,16 +72,20 @@ const titled = (title: string, body: string): HTMLElement =>
     h("div", { class: "empty-card" }, body),
   );
 
-const placeholder =
-  (title: string): View =>
-  () => ({ el: titled(title, "Nothing here yet.") });
-
 /** `tab: false` routes are reachable by link only and get no tab bar entry. */
 export type AppRoute = Route<View> & { label: string; icon: IconName; tab?: boolean };
 
 export function buildRoutes(deps: ViewDeps): AppRoute[] {
   // One timer for the whole session: the shell rebuilds views on navigation, so Today cannot own it.
   const timer = deps.todayEnv?.timer ?? createSharedTimer(deps.todayEnv?.now ?? (() => Date.now()));
+  /** All data was replaced: a running or paused timer refers to a task that may be gone, so stop it. */
+  const onImported = () => {
+    if (!isActive(timer.controller.snapshot())) return;
+    timer.controller.stop();
+    const own = deps.todayEnv?.feedback ? null : createFeedback(browserFeedbackEnv());
+    (deps.todayEnv?.feedback ?? own!).releaseWakeLock();
+    own?.dispose();
+  };
   return [
     { path: "/today", label: "Today", icon: "today", view: () => todayView({ ...(deps.todayEnv ?? defaultTodayEnv(deps.today)), timer }) },
     {
@@ -79,7 +96,7 @@ export function buildRoutes(deps: ViewDeps): AppRoute[] {
       view: () => editTasksView({ port: deps.today, timer, feedback: deps.todayEnv?.feedback, after: deps.todayEnv?.after }),
     },
     { path: "/repertoire", label: "Repertoire", icon: "repertoire", view: () => repertoireView(deps.repertoire ?? emptyRepertoire) },
-    { path: "/settings", label: "Settings", icon: "settings", view: placeholder("Settings") },
+    { path: "/settings", label: "Settings", icon: "settings", view: () => settingsView(deps.backup ?? emptyBackup, { ...browserSettingsEnv(), onImported }) },
   ];
 }
 

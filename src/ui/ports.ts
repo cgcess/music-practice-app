@@ -90,3 +90,15 @@ export interface RepertoirePort {
   /** Strength buckets for the whole repertoire (read only). */
   repertoireStrength(): Promise<StrengthCounts>;
 }
+
+/** Settings tab backup port (see src/app/backupPort.ts). Rejections carry user-ready messages. */
+export interface BackupPort {
+  /** Serialises all data; `text` is the JSON file body. */
+  prepareExport(): Promise<{ fileName: string; text: string; tasks: number; songs: number }>;
+  /** Validates a backup file without writing anything. */
+  inspect(text: string): Promise<{ tasks: number; songs: number; hasSettings: boolean }>;
+  /** Counts of what is on the device now. */
+  current(): Promise<{ tasks: number; songs: number }>;
+  /** Replaces all data with the file's contents; data is unchanged on failure. */
+  importBackup(text: string): Promise<void>;
+}
